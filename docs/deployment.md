@@ -7,7 +7,7 @@ Use the repository root as the connected Git repository, then set the Vercel pro
 Required environment variables:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (recommended) or `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_SITE_URL` (for example, `https://rapidohelp.com`)
 
 Recommended build settings:
@@ -17,6 +17,8 @@ Recommended build settings:
 - Install command: `npm install`
 - Build command: `npm run build`
 - Output directory: leave default for Next.js
+
+If Vercel reports `No Next.js version detected`, the project Root Directory is not pointing at `apps/web`.
 
 ## Supabase production
 
@@ -94,7 +96,7 @@ If you use the included deploy workflow, configure these repository secrets:
 - `SUPABASE_ACCESS_TOKEN`
 - `SUPABASE_PROJECT_REF`
 - `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` or `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
 ## Notes
 

@@ -213,7 +213,8 @@ Set the Vercel project **Root Directory** to `apps/web`, then add the environmen
 
 ```bash
 vercel env add NEXT_PUBLIC_SUPABASE_URL
-vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY
+vercel env add NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+vercel env add NEXT_PUBLIC_SITE_URL
 vercel deploy
 ```
 

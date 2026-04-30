@@ -1,16 +1,20 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
-import { requireSupabaseConfig } from "./config";
+import { getSupabaseConfig } from "./config";
 
 export async function updateSession(request: NextRequest) {
-  const { supabaseUrl, supabaseKey } = requireSupabaseConfig();
+  const { supabaseUrl, supabaseKey } = getSupabaseConfig();
 
   let response = NextResponse.next({
     request: {
       headers: request.headers,
     },
   });
+
+  if (!supabaseUrl || !supabaseKey) {
+    return response;
+  }
 
   const supabase = createServerClient(supabaseUrl, supabaseKey, {
     cookies: {
