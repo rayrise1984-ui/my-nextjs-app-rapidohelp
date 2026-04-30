@@ -1,0 +1,26 @@
+{
+  "name": "rapidohelp",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "turbo run dev --filter=@rapidohelp/web",
+    "dev:web": "npm run dev --workspace @rapidohelp/web",
+    "build:web": "npm run build --workspace @rapidohelp/web",
+    "typecheck:web": "npm run typecheck --workspace @rapidohelp/web",
+    "test": "npm run test:web && npm run test:contracts",
+    "test:web": "npm run test --workspace @rapidohelp/web",
+    "test:contracts": "node --test tests/supabase-contract.test.mjs",
+    "test:mobile": "cd apps/mobile && flutter test",
+    "ci:web": "npm run typecheck:web && npm run test:web && npm run test:contracts && npm run build:web",
+    "seed:demo-users": "node scripts/create-demo-users.cjs"
+  },
+  "devDependencies": {
+    "next": "15.2.4",
+    "turbo": "^2.5.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

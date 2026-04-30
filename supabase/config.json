@@ -1,0 +1,32 @@
+{
+  "db": {
+    "migrations": {
+      "dir": "supabase/migrations"
+    }
+  },
+  "api": {
+    "port": 54321,
+    "schemas": {
+      "realtime": "realtime",
+      "graphql_public": "graphql_public"
+    },
+    "max_rows": 1000
+  },
+  "auth": {
+    "enable_signup": true,
+    "enable_anonymous_signups": false,
+    "jwt": {
+      "expiry_duration": 3600,
+      "refresh_token_rotation_enabled": true,
+      "refresh_token_reuse_interval": 10,
+      "custom_claims": {}
+    }
+  },
+  "realtime": {
+    "enabled": true,
+    "max_bytes_per_second": 1000000,
+    "max_concurrent_users": 200,
+    "max_event_background_workers": 20,
+    "event_per_second": 1000
+  }
+}
