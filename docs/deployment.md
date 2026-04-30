@@ -2,7 +2,7 @@
 
 ## Web on Vercel
 
-Use the repository root as the connected Git repository and leave the Vercel project Root Directory set to the repository root. The root `vercel.json` runs the web workspace build.
+Use the repository root as the connected Git repository, then set the Vercel project Root Directory to `apps/web`. That directory contains the Next.js app package and its `next` dependency, so Vercel can detect the framework correctly.
 
 Required environment variables:
 
@@ -12,10 +12,10 @@ Required environment variables:
 
 Recommended build settings:
 
-- Root Directory: repository root
+- Root Directory: `apps/web`
 - Framework preset: Next.js
 - Install command: `npm install`
-- Build command: `npm run build:web`
+- Build command: `npm run build`
 - Output directory: leave default for Next.js
 
 ## Supabase production

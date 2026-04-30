@@ -209,6 +209,8 @@ supabase start
 ### Deployment
 
 **Web (Vercel):**
+Set the Vercel project **Root Directory** to `apps/web`, then add the environment variables and deploy.
+
 ```bash
 vercel env add NEXT_PUBLIC_SUPABASE_URL
 vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY
