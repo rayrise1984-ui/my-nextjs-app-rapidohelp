@@ -7,14 +7,17 @@ const siteUrl = getSiteUrl();
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "RapidoHelp",
-  description: "Book local roadside and everyday help from nearby verified service partners.",
+  title: {
+    default: "RapidoHelp",
+    template: "%s | RapidoHelp",
+  },
+  description: "Book trusted roadside, home, care, and moving help from nearby verified service partners.",
   alternates: {
     canonical: "/",
   },
   openGraph: {
     title: "RapidoHelp",
-    description: "Book local roadside and everyday help from nearby verified service partners.",
+    description: "Book trusted roadside, home, care, and moving help from nearby verified service partners.",
     url: siteUrl,
     siteName: "RapidoHelp",
     type: "website",

@@ -1,166 +1,288 @@
-import { hasSupabaseBrowserConfig } from "@/lib/supabase";
-import { bookableServiceTypes, type ServiceType } from "@/lib/marketplace";
-import { LoginLinks } from "@/components/login-links";
 import Link from "next/link";
 
-const serviceCards = [
-  {
-    id: "flat_tire",
-    image: "/images/roadside-work-hero.png",
-    title: "Flat Tire Fix",
-    detail: "For punctures, low tire pressure, spare tire swaps, and roadside wheel help when you are stuck.",
-  },
-  {
-    id: "jump_start",
-    image: "/images/jump-start-service.png",
-    title: "Jump Start",
-    detail: "For dead batteries, jumper pack help, quick battery checks, and getting your car started safely.",
-  },
-  {
-    id: "fuel_delivery",
-    image: "/images/fuel-delivery-service.png",
-    title: "Fuel Delivery",
-    detail: "For empty-tank situations when you need approved fuel brought to your parked vehicle.",
-  },
-  {
-    id: "towing",
-    image: "/images/towing-service.png",
-    title: "Towing",
-    detail: "For vehicles that cannot be driven and need transport to home, a shop, or another safe location.",
-  },
-  {
-    id: "moving_help",
-    image: "/images/moving-help-service.png",
-    title: "Moving Help",
-    detail: "For lifting boxes, loading small moves, carrying furniture, and short local moving tasks.",
-  },
-  {
-    id: "handyman_help",
-    image: "/images/handyman-service.png",
-    title: "Handyman Help",
-    detail: "For furniture assembly, minor repairs, mounting, setup, and practical home fixes.",
-  },
-  {
-    id: "plumbing_help",
-    image: "/images/plumbing-service.png",
-    title: "Plumbing Help",
-    detail: "For leaks, clogged sinks, faucet issues, fixture swaps, and quick non-emergency plumbing tasks.",
-  },
-  {
-    id: "electrical_help",
-    image: "/images/electric-service.png",
-    title: "Electrical Help",
-    detail: "For outlets, switches, light fixtures, basic checks, and safe non-emergency electrical help.",
-  },
-  {
-    id: "cna_support",
-    image: "/images/cna-service.png",
-    title: "CNA Support",
-    detail: "For non-emergency daily-care support, reminders, wellness checks, and basic home assistance.",
-  },
-  {
-    id: "senior_helper",
-    image: "/images/senior-helper-service.png",
-    title: "Senior Helper",
-    detail: "For errands, light chores, companionship, grocery help, and daily routine support for seniors.",
-  },
-  {
-    id: "cleaning_help",
-    image: "/images/cleaning-service.png",
-    title: "Cleaning Help",
-    detail: "For home or office tidying, surface cleaning, move-out cleanup, and quick refresh jobs.",
-  },
-  {
-    id: "delivery_help",
-    image: "/images/delivery-service.png",
-    title: "Delivery Help",
-    detail: "For local pickup, parcel drop-off, errands, and same-day delivery of small items.",
-  },
-  {
-    id: "pet_help",
-    image: "/images/pet-help-service.png",
-    title: "Pet Help",
-    detail: "For dog walking, pet transport, feeding visits, and basic pet-care support.",
-  },
-  {
-    id: "tech_help",
-    image: "/images/tech-help-service.png",
-    title: "Tech Help",
-    detail: "For laptop setup, phone help, Wi-Fi/router setup, software basics, and device troubleshooting.",
-  },
+import { LoginLinks } from "@/components/login-links";
+import { serviceCatalog, serviceCatalogEntries, serviceGroups, matchesServiceSearch } from "@/lib/service-catalog";
+
+type SearchParams = Record<string, string | string[] | undefined>;
+
+const firstParam = (value: string | string[] | undefined) => {
+  if (Array.isArray(value)) {
+    return value[0] ?? "";
+  }
+
+  return value ?? "";
+};
+
+const formatPrice = (value: number) => {
+  if (value <= 0) {
+    return "$0";
+  }
+
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
+};
+
+const homeStats = [
+  { value: "24/7", label: "Booking and support" },
+  { value: "Verified", label: "Partner review" },
+  { value: "Fast", label: "Live matching" },
+  { value: "Rated", label: "Post-job reviews" },
 ];
 
-export default function HomePage() {
-  const supabaseConfigured = hasSupabaseBrowserConfig();
-  const visibleServiceCards = serviceCards.filter((service) =>
-    bookableServiceTypes.includes(service.id as ServiceType),
-  );
+export default function HomePage({ searchParams }: { searchParams?: SearchParams }) {
+  const query = firstParam(searchParams?.q).trim();
+  const selectedGroup = firstParam(searchParams?.group).trim();
+  const normalizedGroup = selectedGroup && selectedGroup !== "all" ? selectedGroup : "all";
+  const featuredServices = serviceCatalogEntries.slice(0, 3);
+
+  const groupsToRender = serviceGroups
+    .map((group) => {
+      const services = group.serviceTypes
+        .map((serviceType) => serviceCatalog[serviceType])
+        .filter((service) => normalizedGroup === "all" || service.groupId === normalizedGroup)
+        .filter((service) => matchesServiceSearch(service, query));
+
+      return { group, services };
+    })
+    .filter(({ services }) => services.length > 0);
+
+  const hasFilters = Boolean(query || normalizedGroup !== "all");
 
   return (
-    <main className="page-shell">
-      <header className="public-topbar">
+    <main className="page-shell marketplace-shell">
+      <header className="public-topbar marketplace-topbar">
         <Link className="public-brand" href="/">
           RapidoHelp
         </Link>
         <LoginLinks />
       </header>
 
-      <section className="hero">
-        <div className="hero-content">
-          <p className="eyebrow">Happy to help, anytime, anywhere, always</p>
-          <h1>RapidoHelp</h1>
+      <section className="marketplace-hero">
+        <div className="marketplace-hero-copy">
+          <p className="eyebrow">UrbanClap-style local services</p>
+          <h1>Book trusted help in minutes</h1>
           <p className="lead">
-            Flat tire, dead battery, fuel delivery, towing, and urgent local tasks handled by nearby service partners.
+            Search categories, compare service partners, schedule a visit, and keep the full job
+            history, payment, and ratings in one account.
           </p>
-          <div className="status-row">
-            <span className={supabaseConfigured ? "status ok" : "status warn"}>
-              {supabaseConfigured
-                ? "Create a profile to get started"
-                : "Create a profile to get started"}
-            </span>
-            {supabaseConfigured && (
-              <>
-                <Link className="cta-link" href="/dashboard">
-                  Book help now
-                </Link>
-                <Link className="cta-link" href="/auth">
-                  Sign up
-                </Link>
-              </>
-            )}
-            {!supabaseConfigured && (
-              <Link className="cta-link" href="/auth">
-                Sign up
+
+          <div className="marketplace-pill-row" aria-label="Trust signals">
+            {homeStats.map((stat) => (
+              <span className="marketplace-pill" key={stat.label}>
+                <strong>{stat.value}</strong>
+                <span>{stat.label}</span>
+              </span>
+            ))}
+          </div>
+
+          <form className="marketplace-search" method="get">
+            <label className="marketplace-search-field">
+              <span>Search services</span>
+              <input
+                aria-label="Search services"
+                defaultValue={query}
+                name="q"
+                placeholder="Plumbing, towing, cleaning, handyman..."
+                type="search"
+              />
+            </label>
+
+            <label className="marketplace-search-field">
+              <span>Category</span>
+              <select aria-label="Service group" defaultValue={normalizedGroup} name="group">
+                <option value="all">All categories</option>
+                {serviceGroups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button className="cta-link marketplace-search-submit" type="submit">
+              Search
+            </button>
+
+            {hasFilters ? (
+              <Link className="cta-link secondary marketplace-search-reset" href="/">
+                Clear
               </Link>
-            )}
+            ) : null}
+          </form>
+
+          <div className="marketplace-actions">
+            <Link className="cta-link" href="/auth?account=customer">
+              Create customer profile
+            </Link>
+            <Link className="cta-link secondary" href="/auth?account=helper">
+              Join as service partner
+            </Link>
           </div>
         </div>
 
-        <div className="help-options" aria-label="Booking options">
-          <Link href="/dashboard">
-            <strong>Roadside help</strong>
-            <span>Book tire, battery, fuel, or towing support.</span>
-          </Link>
-          <Link href="/dashboard">
-            <strong>Home and local tasks</strong>
-            <span>Post moving, handyman, cleaning, delivery, tech, or pet help.</span>
-          </Link>
-          <Link href="/auth">
-            <strong>Sign up</strong>
-            <span>Start a customer or service partner account before you sign in.</span>
-          </Link>
+        <aside className="marketplace-hero-side" aria-label="Popular services">
+          <div className="marketplace-side-panel">
+            <p className="eyebrow">Popular right now</p>
+            <div className="marketplace-featured-list">
+              {featuredServices.map((service) => (
+                <Link
+                  className="marketplace-featured-item"
+                  href={`/services/${service.serviceType}`}
+                  key={service.serviceType}
+                >
+                  <img alt="" src={service.image} />
+                  <div>
+                    <strong>{service.title}</strong>
+                    <span>{service.groupLabel}</span>
+                    <span>
+                      From {formatPrice(service.priceFrom)} · {service.typicalDuration}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+
+            <div className="marketplace-side-statgrid">
+              <div>
+                <strong>Verified partners</strong>
+                <span>Partner access goes through review and approval.</span>
+              </div>
+              <div>
+                <strong>Live matching</strong>
+                <span>Requests route to nearby available helpers and partner offers.</span>
+              </div>
+              <div>
+                <strong>Flexible payment</strong>
+                <span>Card, UPI, and cash are supported across booking flows.</span>
+              </div>
+              <div>
+                <strong>Job history</strong>
+                <span>Customers and helpers keep a complete record of the work.</span>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <nav className="marketplace-chip-rail" aria-label="Browse categories">
+        <Link className={normalizedGroup === "all" ? "marketplace-chip active" : "marketplace-chip"} href="/">
+          All categories
+        </Link>
+        {serviceGroups.map((group) => {
+          const href = `/?group=${encodeURIComponent(group.id)}`;
+          return (
+            <Link
+              className={normalizedGroup === group.id ? "marketplace-chip active" : "marketplace-chip"}
+              href={href}
+              key={group.id}
+            >
+              {group.label}
+            </Link>
+          );
+        })}
+      </nav>
+
+      <section className="marketplace-band">
+        <div className="marketplace-band-copy">
+          <p className="eyebrow">How it works</p>
+          <h2>Built like a service marketplace, not a contact form</h2>
+          <p>
+            Browse the service catalog, pick a category, choose a time, add a service address,
+            and send the job to a verified partner or a preferred helper.
+          </p>
+        </div>
+        <div className="marketplace-stepgrid">
+          <div>
+            <strong>1. Choose a service</strong>
+            <span>Search the catalog or tap a category to open the service page.</span>
+          </div>
+          <div>
+            <strong>2. Set the booking</strong>
+            <span>Add the address, time, and payment preference.</span>
+          </div>
+          <div>
+            <strong>3. Match a partner</strong>
+            <span>We route the job to a verified service partner or your preferred helper.</span>
+          </div>
+          <div>
+            <strong>4. Track the work</strong>
+            <span>Both sides keep the full job history, payout record, and review trail.</span>
+          </div>
         </div>
       </section>
 
-      <section className="grid">
-        {visibleServiceCards.map((service) => (
-          <Link className="card" href={`/dashboard?service=${service.id}`} key={service.id}>
-            <img src={service.image} alt="" />
-            <h2>{service.title}</h2>
-            <p>{service.detail}</p>
-            <span>Book this service</span>
-          </Link>
-        ))}
+      <section id="services" className="marketplace-sections">
+        {groupsToRender.length > 0 ? (
+          groupsToRender.map(({ group, services }) => (
+            <section className="marketplace-group" key={group.id}>
+              <div className="marketplace-group-header">
+                <div>
+                  <p className="eyebrow">{group.label}</p>
+                  <h2>{group.label}</h2>
+                  <p>{group.description}</p>
+                </div>
+                <Link className="text-link" href={`/?group=${encodeURIComponent(group.id)}`}>
+                  View only this group
+                </Link>
+              </div>
+
+              <div className="service-grid">
+                {services.map((service) => (
+                  <Link className="service-tile" href={`/services/${service.serviceType}`} key={service.serviceType}>
+                    <img alt="" src={service.image} />
+                    <div className="service-tile-body">
+                      <div className="service-tile-meta">
+                        <span className="service-tile-badge">{service.groupLabel}</span>
+                        <span>{service.reviewCount} reviews</span>
+                      </div>
+                      <h3>{service.title}</h3>
+                      <p>{service.summary}</p>
+                      <div className="service-tile-footer">
+                        <span>
+                          From {formatPrice(service.priceFrom)} · {service.typicalDuration}
+                        </span>
+                        <strong>View details</strong>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ))
+        ) : (
+          <div className="empty-state marketplace-empty">
+            No services match that search yet. Try another category or clear the filters.
+          </div>
+        )}
+      </section>
+
+      <section className="marketplace-band marketplace-band-split">
+        <div className="marketplace-band-copy">
+          <p className="eyebrow">Why people stay</p>
+          <h2>Trust, routing, and records in one place</h2>
+          <p>
+            Every job carries the address, schedule, payment preference, partner assignment,
+            ratings, and completion history so customers and helpers can both see what happened.
+          </p>
+        </div>
+
+        <div className="marketplace-benefits">
+          <div>
+            <strong>For customers</strong>
+            <span>Browse service pages, book a visit, track progress, and rate the result.</span>
+          </div>
+          <div>
+            <strong>For service partners</strong>
+            <span>Accept nearby offers, manage availability, and review earnings and payouts.</span>
+          </div>
+          <div>
+            <strong>For admins</strong>
+            <span>Review profiles, approve partners, monitor jobs, and resolve support issues.</span>
+          </div>
+        </div>
       </section>
     </main>
   );

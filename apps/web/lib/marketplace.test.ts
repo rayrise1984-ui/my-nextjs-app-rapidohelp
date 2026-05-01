@@ -16,6 +16,11 @@ import {
   type Job,
   type ServiceType,
 } from "./marketplace.ts";
+import {
+  getServiceCatalogEntry,
+  serviceCatalogEntries,
+  serviceGroups,
+} from "./service-catalog.ts";
 
 const makeJob = (overrides: Partial<Job> = {}): Job => ({
   id: overrides.id ?? "job-1",
@@ -104,6 +109,28 @@ describe("marketplace service catalog", () => {
     assert.equal(isBookableServiceType("plumbing_help"), false);
     assert.equal(isBookableServiceType("not_a_service"), false);
     assert.ok(bookableServiceTypes.every((type) => serviceTypeLabels[type]));
+  });
+
+  it("exposes a detailed catalog entry for every bookable service", () => {
+    assert.equal(serviceCatalogEntries.length, bookableServiceTypes.length);
+
+    for (const serviceType of bookableServiceTypes) {
+      const entry = getServiceCatalogEntry(serviceType);
+
+      assert.ok(entry, `missing catalog entry for ${serviceType}`);
+      assert.equal(entry?.serviceType, serviceType);
+      assert.ok((entry?.priceFrom ?? 0) > 0);
+      assert.ok((entry?.highlights.length ?? 0) > 0);
+      assert.ok((entry?.includes.length ?? 0) > 0);
+      assert.ok((entry?.addOns.length ?? 0) > 0);
+    }
+
+    for (const group of serviceGroups) {
+      for (const serviceType of group.serviceTypes) {
+        const entry = getServiceCatalogEntry(serviceType);
+        assert.equal(entry?.groupId, group.id);
+      }
+    }
   });
 });
 
