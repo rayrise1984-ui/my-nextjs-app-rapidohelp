@@ -8,13 +8,13 @@ const siteUrl = getSiteUrl();
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: "RapidoHelp",
-  description: "Book local roadside and everyday help from nearby verified helpers.",
+  description: "Book local roadside and everyday help from nearby verified service partners.",
   alternates: {
     canonical: "/",
   },
   openGraph: {
     title: "RapidoHelp",
-    description: "Book local roadside and everyday help from nearby verified helpers.",
+    description: "Book local roadside and everyday help from nearby verified service partners.",
     url: siteUrl,
     siteName: "RapidoHelp",
     type: "website",
