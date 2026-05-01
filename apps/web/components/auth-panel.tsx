@@ -11,6 +11,7 @@ import {
 } from "@/lib/supabase";
 
 const HELPER_BACKGROUND_CHECK_CONSENT_VERSION = "helper_background_check_v1";
+const ADMIN_LOGIN_EMAIL = "helpdesk@rapidohelp.com";
 
 export function AuthPanel() {
   const router = useRouter();
@@ -58,6 +59,10 @@ export function AuthPanel() {
 
     if (requestedMode === "signin") {
       setEntryMode("signin");
+      if (requestedAccount === "admin") {
+        setAuthMode("email");
+        setEmail(ADMIN_LOGIN_EMAIL);
+      }
       return;
     }
 
@@ -281,11 +286,19 @@ export function AuthPanel() {
   return (
     <section className="auth-panel">
       <p className="eyebrow">Live account access</p>
-      <h1>{entryMode === "create" ? "Create your profile." : "Sign in to RapidoHelp."}</h1>
+      <h1>
+        {entryMode === "create"
+          ? "Create your profile."
+          : searchParams.get("account") === "admin"
+            ? "Admin sign in."
+            : "Sign in to RapidoHelp."}
+      </h1>
       <p className="lead">
         {entryMode === "create"
           ? "Customer and service partner accounts start by creating a profile, then moving into the app."
-          : "Use email, password, magic link, or SMS to book help, accept jobs, or manage operations."}
+          : searchParams.get("account") === "admin"
+            ? "Use the helpdesk admin account to review service partners and manage the marketplace."
+            : "Use email, password, magic link, or SMS to book help, accept jobs, or manage operations."}
       </p>
 
       {session ? (
@@ -389,6 +402,11 @@ export function AuthPanel() {
 
               {authMode === "email" ? (
                 <form className="auth-form" onSubmit={submitEmail}>
+                  {searchParams.get("account") === "admin" ? (
+                    <p className="auth-note">
+                      Admin access uses <strong>{ADMIN_LOGIN_EMAIL}</strong>.
+                    </p>
+                  ) : null}
                   <label>
                     Email address
                     <input

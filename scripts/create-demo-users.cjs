@@ -43,12 +43,20 @@ const DEMO_USERS = [
   {
     email: 'demo.customer@rapidohelp.local',
     fullName: 'Demo Customer',
+    role: 'customer',
     isWorker: false,
   },
   {
     email: DEMO_WORKER_EMAIL,
     fullName: 'Demo Worker',
+    role: 'agent',
     isWorker: true,
+  },
+  {
+    email: process.env.SMTP_ADMIN_EMAIL || 'helpdesk@rapidohelp.com',
+    fullName: 'Helpdesk Admin',
+    role: 'admin',
+    isWorker: false,
   },
 ];
 
@@ -76,6 +84,7 @@ function loadRootEnv() {
 }
 
 async function upsertAuthUser(client, demoUser) {
+  const role = demoUser.role || (demoUser.isWorker ? 'agent' : 'customer');
   const { data: usersData, error: listError } = await client.auth.admin.listUsers();
   if (listError) throw listError;
 
@@ -87,7 +96,7 @@ async function upsertAuthUser(client, demoUser) {
       email_confirm: true,
       user_metadata: {
         full_name: demoUser.fullName,
-        role: demoUser.isWorker ? 'agent' : 'customer',
+        role,
         is_worker: demoUser.isWorker,
         worker_background_check_consent: demoUser.isWorker,
         worker_background_check_consent_platform: demoUser.isWorker ? 'web' : null,
@@ -106,7 +115,7 @@ async function upsertAuthUser(client, demoUser) {
     email_confirm: true,
     user_metadata: {
       full_name: demoUser.fullName,
-      role: demoUser.isWorker ? 'agent' : 'customer',
+      role,
       is_worker: demoUser.isWorker,
       worker_background_check_consent: demoUser.isWorker,
       worker_background_check_consent_platform: demoUser.isWorker ? 'web' : null,
@@ -120,13 +129,14 @@ async function upsertAuthUser(client, demoUser) {
 }
 
 async function upsertDemoProfile(client, user, demoUser) {
+  const role = demoUser.role || (demoUser.isWorker ? 'agent' : 'customer');
   const serviceSets = demoUser.isWorker ? WORKER_SERVICE_SETS : [[]];
 
   for (const serviceTypes of serviceSets) {
     const profile = {
       id: user.id,
       full_name: demoUser.fullName,
-      role: demoUser.isWorker ? 'agent' : 'customer',
+      role,
       is_worker: demoUser.isWorker,
       worker_background_check_consent_at: demoUser.isWorker ? new Date().toISOString() : null,
       worker_background_check_consent_platform: demoUser.isWorker ? 'web' : null,
@@ -139,7 +149,7 @@ async function upsertDemoProfile(client, user, demoUser) {
         ? 'Roadside helper for flat tires, jump starts, fuel delivery, towing, and general urgent tasks.'
         : null,
       worker_experience_years: demoUser.isWorker ? 4 : null,
-      worker_profile_completed: false,
+      worker_profile_completed: demoUser.role === 'admin' ? true : false,
     };
 
     const { error } = await client.from('profiles').upsert(profile).eq('id', user.id);

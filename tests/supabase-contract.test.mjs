@@ -99,9 +99,10 @@ describe("Supabase auth and SMTP configuration", () => {
 
 describe("Web login routing", () => {
   it("routes the admin link to the sign-in form instead of the protected workspace", () => {
-    assert.match(webLoginLinks, /href: "\/auth\?mode=signin"/);
+    assert.match(webLoginLinks, /href: "\/auth\?mode=signin&account=admin"/);
     assert.match(webLoginLinks, /label: "Admin Sign In"/);
     assert.doesNotMatch(webLoginLinks, /href: "\/admin".*label: "Admin Login"/s);
+    assert.match(webAuthPanel, /helpdesk@rapidohelp\.com/);
   });
 });
 
@@ -135,6 +136,12 @@ describe("Demo worker SMTP bootstrap", () => {
     assert.match(demoSeedScript, /loadEnvFile\(path\.join\(__dirname, '\.\.', '\.env\.local'\)\)/);
     assert.match(demoSeedScript, /password from \$\{passwordSource\}/);
     assert.doesNotMatch(demoSeedScript, /ready:[^`]*:\$\{DEMO_PASSWORD\}/);
+  });
+
+  it("creates a helpdesk admin seed for the admin sign-in path", () => {
+    assert.match(demoSeedScript, /email: process\.env\.SMTP_ADMIN_EMAIL \|\| 'helpdesk@rapidohelp\.com'/);
+    assert.match(demoSeedScript, /fullName: 'Helpdesk Admin'/);
+    assert.match(demoSeedScript, /role: 'admin'/);
   });
 });
 
