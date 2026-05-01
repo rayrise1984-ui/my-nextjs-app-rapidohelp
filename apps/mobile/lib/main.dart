@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -332,6 +333,7 @@ class _AuthScreenState extends State<AuthScreen> {
   final TextEditingController _fullNameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _emailCodeController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _phoneCodeController = TextEditingController();
 
@@ -339,6 +341,7 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _createProfileMode = true;
   bool _helperAccount = false;
   bool _helperBackgroundCheckConsent = false;
+  bool _emailCodeSent = false;
   bool _phoneCodeSent = false;
   bool _usePhoneLogin = false;
   String? _message;
@@ -358,9 +361,144 @@ class _AuthScreenState extends State<AuthScreen> {
     _fullNameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _emailCodeController.dispose();
     _phoneController.dispose();
     _phoneCodeController.dispose();
     super.dispose();
+  }
+
+  Future<void> _sendEmailCode() async {
+    final email = _emailController.text.trim();
+
+    if (email.isEmpty) {
+      setState(() {
+        _error = 'Enter an email address first.';
+        _message = null;
+      });
+      return;
+    }
+
+    if (!SupabaseConfig.isConfigured) {
+      setState(() {
+        _error = 'Supabase is not configured for this build.';
+        _message = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+      _message = null;
+    });
+
+    try {
+      await Supabase.instance.client.auth.signInWithOtp(
+        email: email,
+        emailRedirectTo: kIsWeb ? null : 'io.supabase.flutter://signin-callback/',
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _emailCodeSent = true;
+        _message = 'Email code sent. Enter it below to sign in.';
+      });
+    } on AuthException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _error = error.message;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _error = 'Unable to send email code right now.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _submitting = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _verifyEmailCode() async {
+    final email = _emailController.text.trim();
+    final code = _emailCodeController.text.trim();
+
+    if (email.isEmpty) {
+      setState(() {
+        _error = 'Enter an email address first.';
+        _message = null;
+      });
+      return;
+    }
+
+    if (code.isEmpty) {
+      await _sendEmailCode();
+      return;
+    }
+
+    if (!SupabaseConfig.isConfigured) {
+      setState(() {
+        _error = 'Supabase is not configured for this build.';
+        _message = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+      _message = null;
+    });
+
+    try {
+      await Supabase.instance.client.auth.verifyOTP(
+        email: email,
+        token: code,
+        type: OtpType.email,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _message = 'Signed in successfully.';
+      });
+    } on AuthException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _error = error.message;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _error = 'Email sign-in failed. Try again.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _submitting = false;
+        });
+      }
+    }
   }
 
   Future<void> _signInWithPassword() async {
@@ -610,11 +748,16 @@ class _AuthScreenState extends State<AuthScreen> {
     final phone = _phoneController.text.trim();
     final code = _phoneCodeController.text.trim();
 
-    if (phone.isEmpty || code.isEmpty) {
+    if (phone.isEmpty) {
       setState(() {
-        _error = 'Enter your phone number and SMS code.';
+        _error = 'Enter a phone number first.';
         _message = null;
       });
+      return;
+    }
+
+    if (code.isEmpty) {
+      await _sendPhoneCode();
       return;
     }
 
@@ -722,7 +865,10 @@ class _AuthScreenState extends State<AuthScreen> {
                               setState(() {
                                 _createProfileMode = selection.first;
                                 _usePhoneLogin = false;
+                                _emailCodeSent = false;
+                                _emailCodeController.clear();
                                 _phoneCodeSent = false;
+                                _phoneCodeController.clear();
                                 _error = null;
                                 _message = null;
                               });
@@ -835,12 +981,16 @@ class _AuthScreenState extends State<AuthScreen> {
                         onSelectionChanged: _submitting
                             ? null
                             : (selection) {
-                                setState(() {
-                                  _usePhoneLogin = selection.first;
-                                  _error = null;
-                                  _message = null;
-                                });
-                              },
+                              setState(() {
+                                _usePhoneLogin = selection.first;
+                                _emailCodeSent = false;
+                                _emailCodeController.clear();
+                                _phoneCodeSent = false;
+                                _phoneCodeController.clear();
+                                _error = null;
+                                _message = null;
+                              });
+                            },
                       ),
                       const SizedBox(height: 16),
                       if (!_usePhoneLogin &&
@@ -883,7 +1033,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                       ),
                               child: Text(SupabaseConfig.workerLoginButtonText),
                             ),
-                          ),
+                        ),
                         const SizedBox(height: 16),
                       ],
                       if (!_usePhoneLogin) ...[
@@ -896,22 +1046,31 @@ class _AuthScreenState extends State<AuthScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        TextField(
-                          controller: _passwordController,
-                          obscureText: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Password',
-                            border: OutlineInputBorder(),
+                        if (_emailCodeSent) ...[
+                          TextField(
+                            controller: _emailCodeController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Email code',
+                              border: OutlineInputBorder(),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 16),
+                          const SizedBox(height: 16),
+                        ],
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton(
-                            onPressed:
-                                _submitting ? null : _signInWithPassword,
+                            onPressed: _submitting
+                                ? null
+                                : _emailCodeSent
+                                    ? _verifyEmailCode
+                                    : _sendEmailCode,
                             child: Text(
-                              _submitting ? 'Please wait...' : 'Sign in',
+                              _submitting
+                                  ? 'Please wait...'
+                                  : _emailCodeSent
+                                      ? 'Verify code'
+                                      : 'Send email code',
                             ),
                           ),
                         ),
@@ -961,11 +1120,11 @@ class _AuthScreenState extends State<AuthScreen> {
                       _createProfileMode
                           ? 'New customer and helper accounts start here.'
                           : _usePhoneLogin
-                              ? 'Phone login requires SMS auth to be enabled in Supabase.'
+                              ? 'Phone login uses SMS OTP.'
                               : (SupabaseConfig.hasDevCustomerLogin ||
                                       SupabaseConfig.hasWorkerLogin)
                                   ? 'Quick start buttons fill valid accounts instantly. Manual sign-in is still available below.'
-                                  : 'Dev mode: create a profile once, then sign in with the same credentials.',
+                                  : 'Email login uses OTP codes.',
                     ),
                     if (_message != null) ...[
                       const SizedBox(height: 16),

@@ -50,7 +50,7 @@
 - The app renders the auth shell when Supabase config is missing.
 - Signed-in users must complete their profile before the dashboard or worker view opens.
 - Service partners must consent to a background check before profile completion can finish.
-- Auth UI switches between email/password and phone OTP modes.
+- Auth UI switches between email OTP and phone OTP modes.
 - Job JSON maps database fields, defaults missing payment status to `unpaid`, and calculates payout fallbacks.
 - Worker rating JSON maps all rating fields.
 - RPC object helpers normalize direct object and single-row list responses.

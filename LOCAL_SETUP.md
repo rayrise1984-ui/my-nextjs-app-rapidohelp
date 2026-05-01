@@ -82,6 +82,8 @@ supabase start
 
 For local email inspection without an external SMTP provider, Supabase Inbucket is available at `http://localhost:54324`.
 
+Email OTP for local Supabase uses the Magic Link template path in `supabase/config.toml` and renders `supabase/templates/magic_link.html`. That template should include `{{ .Token }}` so the app can send a six-digit code instead of a link.
+
 ## Flutter Mobile Setup
 ```bash
 cd apps/mobile

@@ -25,6 +25,8 @@ export function AuthPanel() {
   const [helperBackgroundCheckConsent, setHelperBackgroundCheckConsent] = useState(false);
   const [phone, setPhone] = useState("");
   const [phoneCode, setPhoneCode] = useState("");
+  const [emailCode, setEmailCode] = useState("");
+  const [emailCodeSent, setEmailCodeSent] = useState(false);
   const [authMode, setAuthMode] = useState<"email" | "phone">("email");
   const [phoneCodeSent, setPhoneCodeSent] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -63,17 +65,28 @@ export function AuthPanel() {
       setAuthMode("email");
       setEmail(ADMIN_LOGIN_EMAIL);
       setPassword("");
+      setEmailCode("");
+      setEmailCodeSent(false);
+      setPhoneCode("");
       setPhoneCodeSent(false);
       return;
     }
 
     if (requestedMode === "signin") {
       setEntryMode("signin");
+      setEmailCode("");
+      setEmailCodeSent(false);
+      setPhoneCode("");
+      setPhoneCodeSent(false);
       return;
     }
 
     if (requestedMode === "create" || requestedAccount) {
       setEntryMode("create");
+      setEmailCode("");
+      setEmailCodeSent(false);
+      setPhoneCode("");
+      setPhoneCodeSent(false);
       if (requestedAccount === "helper") {
         setAccountType("helper");
       } else if (requestedAccount === "customer") {
@@ -151,9 +164,12 @@ export function AuthPanel() {
 
   const switchEntryMode = (mode: "create" | "signin") => {
     setEntryMode(mode);
+    setEmailCode("");
+    setEmailCodeSent(false);
+    setPhoneCode("");
+    setPhoneCodeSent(false);
     if (mode === "create") {
       setAuthMode("email");
-      setPhoneCodeSent(false);
     }
     resetFeedback();
   };
@@ -188,15 +204,30 @@ export function AuthPanel() {
     }
 
     const normalizedEmail = email.trim();
+    const emailCodeValue = emailCode.trim();
+    const shouldVerifyEmailCode = emailCodeSent && emailCodeValue.length > 0;
 
-    const { error: authError } = password
-      ? await client.auth.signInWithPassword({ email: normalizedEmail, password })
-      : await client.auth.signInWithOtp({
-          email: normalizedEmail,
-          options: {
-            emailRedirectTo: getSupabaseAuthRedirectUrl(),
-          },
-        });
+    let authError: { message: string } | null = null;
+
+    if (isAdminSignin) {
+      ({ error: authError } = await client.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
+      }));
+    } else if (shouldVerifyEmailCode) {
+      ({ error: authError } = await client.auth.verifyOtp({
+        email: normalizedEmail,
+        token: emailCodeValue,
+        type: "email",
+      }));
+    } else {
+      ({ error: authError } = await client.auth.signInWithOtp({
+        email: normalizedEmail,
+        options: {
+          emailRedirectTo: getSupabaseAuthRedirectUrl(),
+        },
+      }));
+    }
 
     setLoading(false);
 
@@ -205,7 +236,19 @@ export function AuthPanel() {
       return;
     }
 
-    setMessage(password ? "Signed in successfully." : "Magic link sent. Open the email and come back to this page.");
+    if (isAdminSignin) {
+      setMessage("Signed in successfully.");
+      return;
+    }
+
+    if (shouldVerifyEmailCode) {
+      setMessage("Signed in successfully.");
+      return;
+    }
+
+    setEmailCodeSent(true);
+    setEmailCode("");
+    setMessage("Email code sent. Check your inbox to finish signing in.");
   };
 
   const submitProfile = async (event: FormEvent<HTMLFormElement>) => {
@@ -284,10 +327,13 @@ export function AuthPanel() {
     setError(null);
     setMessage(null);
 
-    const { error: authError } = phoneCodeSent
+    const phoneCodeValue = phoneCode.trim();
+    const shouldVerifyPhoneCode = phoneCodeSent && phoneCodeValue.length > 0;
+
+    const { error: authError } = shouldVerifyPhoneCode
       ? await client.auth.verifyOtp({
           phone,
-          token: phoneCode,
+          token: phoneCodeValue,
           type: "sms",
         })
       : await client.auth.signInWithOtp({ phone });
@@ -299,12 +345,13 @@ export function AuthPanel() {
       return;
     }
 
-    if (phoneCodeSent) {
+    if (shouldVerifyPhoneCode) {
       setMessage("Signed in successfully.");
       return;
     }
 
     setPhoneCodeSent(true);
+    setPhoneCode("");
     setMessage("SMS code sent. Enter the code to finish signing in.");
   };
 
@@ -323,7 +370,7 @@ export function AuthPanel() {
           ? "Customer and service partner accounts start by creating a profile, then moving into the app."
           : isAdminSignin
             ? "Use the private admin ID and password. Admin access does not need profile setup."
-            : "Use email, password, magic link, or SMS to book help, accept jobs, or manage operations."}
+            : "Use email OTP or SMS OTP to book help, accept jobs, or manage operations."}
       </p>
 
       {session ? (
@@ -465,18 +512,26 @@ export function AuthPanel() {
                       value={email}
                     />
                   </label>
-                  <label>
-                    Password
-                    <input
-                      autoComplete="current-password"
-                      onChange={(event) => setPassword(event.target.value)}
-                      placeholder="Leave blank for magic link"
-                      type="password"
-                      value={password}
-                    />
-                  </label>
+                  {emailCodeSent ? (
+                    <label>
+                      Email code
+                      <input
+                        autoComplete="one-time-code"
+                        inputMode="numeric"
+                        onChange={(event) => setEmailCode(event.target.value)}
+                        placeholder="123456"
+                        value={emailCode}
+                      />
+                    </label>
+                  ) : null}
                   <button disabled={loading} type="submit">
-                    {loading ? "Please wait..." : password ? "Sign in" : "Send magic link"}
+                    {loading
+                      ? "Please wait..."
+                      : emailCodeSent
+                        ? emailCode.trim()
+                          ? "Verify code"
+                          : "Resend code"
+                        : "Send email code"}
                   </button>
                 </form>
               ) : (
@@ -499,13 +554,18 @@ export function AuthPanel() {
                         inputMode="numeric"
                         onChange={(event) => setPhoneCode(event.target.value)}
                         placeholder="123456"
-                        required
                         value={phoneCode}
                       />
                     </label>
                   ) : null}
                   <button disabled={loading} type="submit">
-                    {loading ? "Please wait..." : phoneCodeSent ? "Verify code" : "Send SMS code"}
+                    {loading
+                      ? "Please wait..."
+                      : phoneCodeSent
+                        ? phoneCode.trim()
+                          ? "Verify code"
+                          : "Resend code"
+                        : "Send SMS code"}
                   </button>
                 </form>
               )}

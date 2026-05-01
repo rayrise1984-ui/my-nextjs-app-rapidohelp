@@ -7,6 +7,7 @@ additional_redirect_urls = [
   "http://localhost:3000/auth",
   "http://localhost:3000/dashboard",
   "http://localhost:3000/worker",
+  "io.supabase.flutter://signin-callback/",
   "rapidohelp://auth"
 ]
 jwt_expiry = 3600
@@ -31,6 +32,10 @@ user = "env(SMTP_USER)"
 pass = "env(SMTP_PASS)"
 admin_email = "env(SMTP_ADMIN_EMAIL)"
 sender_name = "RapidoHelp Helpdesk"
+
+[auth.email.template.magic_link]
+subject = "Your RapidoHelp sign-in code"
+content_path = "./supabase/templates/magic_link.html"
 
 [api]
 enabled = true

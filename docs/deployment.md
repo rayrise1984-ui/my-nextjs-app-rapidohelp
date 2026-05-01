@@ -69,6 +69,7 @@ https://your-domain.com/auth
 https://your-domain.com/dashboard
 https://your-domain.com/worker
 http://localhost:3000/**
+io.supabase.flutter://signin-callback/
 rapidohelp://auth
 ```
 
@@ -84,9 +85,11 @@ Use a root `.env` file for SMTP secrets:
 - `SMTP_PASS=your-helpdesk-mailbox-password`
 - `SMTP_ADMIN_EMAIL=helpdesk@rapidohelp.com`
 
-This Office 365 mailbox is the shared SMTP account for all Supabase Auth email delivery in the project, including magic links, passwordless flows, and worker bootstrap mail. Port `587` with STARTTLS is the expected transport.
+This Office 365 mailbox is the shared SMTP account for all Supabase Auth email delivery in the project, including email OTP, magic links, passwordless flows, and worker bootstrap mail. Port `587` with STARTTLS is the expected transport.
 
 For production Supabase projects, configure the same SMTP provider in the Supabase Dashboard under Authentication settings or through the Management API. Use a verified sender address for `SMTP_ADMIN_EMAIL`.
+
+To make email login use OTP codes instead of link clicks, update the hosted Supabase Magic Link template to include `{{ .Token }}`. The local repo already keeps that template in `supabase/templates/magic_link.html` so local development and production stay aligned.
 
 ## GitHub Actions secrets
 

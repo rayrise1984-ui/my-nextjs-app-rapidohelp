@@ -20,6 +20,11 @@ void main() {
     expect(find.text('Email address'), findsOneWidget);
     expect(find.text('Password'), findsOneWidget);
 
+    await tester.tap(find.text('Sign in'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Send email code'), findsOneWidget);
+
     await tester.tap(find.text('Phone'));
     await tester.pumpAndSettle();
 

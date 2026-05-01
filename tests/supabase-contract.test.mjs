@@ -51,6 +51,7 @@ const webLegalCopy = read("apps/web/lib/legal.ts");
 const adminAuthWithoutProfile = read("supabase/migrations/20260503000000_admin_auth_without_profile.sql");
 const activityAuditTrail = read("supabase/migrations/20260504000000_admin_activity_audit_trail.sql");
 const privacyPolicyDoc = read("docs/legal/privacy-policy.md");
+const magicLinkTemplate = read("supabase/templates/magic_link.html");
 const mobileMain = read("apps/mobile/lib/main.dart");
 const mobileProfileGate = read("apps/mobile/lib/screens/profile_completion_gate.dart");
 const mobileProfileSetup = read("apps/mobile/lib/screens/profile_setup_screen.dart");
@@ -95,6 +96,7 @@ describe("Supabase auth and SMTP configuration", () => {
     assert.match(config, /"http:\/\/localhost:3000\/auth"/);
     assert.match(config, /"http:\/\/localhost:3000\/dashboard"/);
     assert.match(config, /"http:\/\/localhost:3000\/worker"/);
+    assert.match(config, /"io\.supabase\.flutter:\/\/signin-callback\/"/);
     assert.match(config, /"rapidohelp:\/\/auth"/);
   });
 
@@ -106,6 +108,12 @@ describe("Supabase auth and SMTP configuration", () => {
     assert.match(config, /pass = "env\(SMTP_PASS\)"/);
     assert.match(config, /admin_email = "env\(SMTP_ADMIN_EMAIL\)"/);
     assert.doesNotMatch(config, /SMTP_PASS=|your-smtp-password/);
+    assert.match(config, /\[auth\.email\.template\.magic_link\]/);
+    assert.match(config, /content_path = "\.\/supabase\/templates\/magic_link\.html"/);
+    assert.match(config, /subject = "Your RapidoHelp sign-in code"/);
+    assert.match(magicLinkTemplate, /Your RapidoHelp sign-in code/);
+    assert.match(magicLinkTemplate, /\{\{ \.Token \}\}/);
+    assert.doesNotMatch(magicLinkTemplate, /\{\{ \.ConfirmationURL \}\}/);
   });
 });
 
@@ -117,6 +125,12 @@ describe("Web login routing", () => {
     assert.match(webAuthPanel, /ADMIN_LOGIN_EMAIL/);
     assert.match(webAuthPanel, /Admin sign in\./);
     assert.match(webAuthPanel, /No profile setup is needed\./);
+    assert.match(webAuthPanel, /Send email code/);
+    assert.match(webAuthPanel, /Verify code/);
+    assert.match(webAuthPanel, /Resend code/);
+    assert.match(webAuthPanel, /type: "email"/);
+    assert.match(webAuthPanel, /type: "sms"/);
+    assert.doesNotMatch(webAuthPanel, /Send magic link/);
     assert.match(webAdminHelper, /helpdesk@rapidohelp\.com/);
     assert.match(webMiddleware, /isAdminEmail/);
     assert.doesNotMatch(webAdminPage, /ProfileCompletionGate|TermsAcceptanceGate/);
@@ -208,6 +222,18 @@ describe("Admin activity visibility", () => {
     assert.match(activityAuditTrail, /log_profile_activity/);
     assert.match(activityAuditTrail, /log_support_request_activity/);
     assert.match(activityAuditTrail, /log_background_check_activity/);
+  });
+});
+
+describe("Mobile OTP auth", () => {
+  it("signs customers and helpers in with email or SMS codes", () => {
+    assert.match(mobileMain, /Email code sent\. Enter it below to sign in\./);
+    assert.match(mobileMain, /Send email code/);
+    assert.match(mobileMain, /Verify code/);
+    assert.match(mobileMain, /OtpType\.email/);
+    assert.match(mobileMain, /OtpType\.sms/);
+    assert.match(mobileMain, /Phone login uses SMS OTP\./);
+    assert.match(mobileMain, /Email login uses OTP codes\./);
   });
 });
 

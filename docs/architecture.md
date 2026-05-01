@@ -23,7 +23,7 @@ The current repo implements those three systems in a single monorepo with Next.j
 
 1. Register or log in
    - Name
-   - Phone number with OTP
+   - Email OTP or phone number with OTP
    - Email, optional
    - Location permission
 2. Browse services
@@ -63,7 +63,7 @@ The current repo implements those three systems in a single monorepo with Next.j
 
 1. Register
    - Name
-   - Phone OTP
+   - Email OTP or phone OTP
    - Email
    - Skills or service selections
    - Experience
