@@ -31,6 +31,7 @@
 - Staff can view all jobs and service partner profiles, including consent status.
 - Staff can approve or pause service partner access through `staff_update_worker_access` after consent is on file.
 - Staff can update job statuses through `staff_update_job_status`.
+- Staff can review the live support inbox and the database-backed audit trail for jobs, profiles, verification, ratings, and payouts.
 - Admin metrics reflect open, active, completed, worker-review, and gross-value counts.
 
 ## Supabase Backend

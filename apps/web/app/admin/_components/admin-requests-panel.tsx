@@ -63,6 +63,17 @@ type AdminSupportRequest = SupportRequest & {
 
 type AdminSupportComment = SupportRequestComment;
 
+type ActivityEvent = {
+  id: string;
+  actor_id: string | null;
+  entity_type: string;
+  entity_id: string | null;
+  action: string;
+  title: string;
+  summary: string;
+  created_at: string;
+};
+
 type AdminActivityItem = {
   id: string;
   title: string;
@@ -168,6 +179,7 @@ export function AdminRequestsPanel() {
   const [backgroundChecksByWorkerId, setBackgroundChecksByWorkerId] = useState<Record<string, WorkerBackgroundCheck>>({});
   const [supportRequests, setSupportRequests] = useState<AdminSupportRequest[]>([]);
   const [supportComments, setSupportComments] = useState<AdminSupportComment[]>([]);
+  const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
   const [statusDrafts, setStatusDrafts] = useState<Record<string, JobStatus>>({});
   const [workerDrafts, setWorkerDrafts] = useState<Record<string, WorkerAccessDraft>>({});
   const [loading, setLoading] = useState(true);
@@ -192,6 +204,7 @@ export function AdminRequestsPanel() {
     let backgroundChannel: ReturnType<typeof client.channel> | null = null;
     let supportRequestChannel: ReturnType<typeof client.channel> | null = null;
     let supportCommentChannel: ReturnType<typeof client.channel> | null = null;
+    let activityChannel: ReturnType<typeof client.channel> | null = null;
 
     const initialize = async () => {
       const { data } = await client.auth.getSession();
@@ -229,7 +242,14 @@ export function AdminRequestsPanel() {
         return;
       }
 
-      const [jobsResult, workersResult, backgroundChecksResult, supportRequestsResult, supportCommentsResult] = await Promise.all([
+      const [
+        jobsResult,
+        workersResult,
+        backgroundChecksResult,
+        supportRequestsResult,
+        supportCommentsResult,
+        activityEventsResult,
+      ] = await Promise.all([
         client.from("jobs").select("*").order("created_at", { ascending: false }),
         client
           .from("profiles")
@@ -251,6 +271,10 @@ export function AdminRequestsPanel() {
         client
           .from("support_request_comments")
           .select("id, request_id, author_id, body, is_internal, created_at")
+          .order("created_at", { ascending: false }),
+        client
+          .from("activity_events")
+          .select("id, actor_id, entity_type, entity_id, action, title, summary, created_at")
           .order("created_at", { ascending: false }),
       ]);
 
@@ -302,6 +326,12 @@ export function AdminRequestsPanel() {
         setError(supportCommentsResult.error.message);
       } else {
         setSupportComments((supportCommentsResult.data ?? []) as AdminSupportComment[]);
+      }
+
+      if (activityEventsResult.error) {
+        setError(activityEventsResult.error.message);
+      } else {
+        setActivityEvents((activityEventsResult.data ?? []) as ActivityEvent[]);
       }
 
       jobChannel = client.channel(`admin-jobs-${nextSession.user.id}`);
@@ -443,6 +473,21 @@ export function AdminRequestsPanel() {
         )
         .subscribe();
 
+      activityChannel = client.channel(`admin-activity-${nextSession.user.id}`);
+      (activityChannel as any)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "activity_events",
+          },
+          (payload: { new: ActivityEvent }) => {
+            setActivityEvents((current) => [payload.new, ...current.filter((event) => event.id !== payload.new.id)]);
+          },
+        )
+        .subscribe();
+
       authSubscription = client.auth
         .onAuthStateChange((_event, nextSessionState) => {
           setSession(nextSessionState);
@@ -463,6 +508,7 @@ export function AdminRequestsPanel() {
       if (backgroundChannel) void client.removeChannel(backgroundChannel as never);
       if (supportRequestChannel) void client.removeChannel(supportRequestChannel as never);
       if (supportCommentChannel) void client.removeChannel(supportCommentChannel as never);
+      if (activityChannel) void client.removeChannel(activityChannel as never);
     };
   }, [router]);
 
@@ -1024,6 +1070,42 @@ export function AdminRequestsPanel() {
                     </span>
                   </header>
                   <p>{item.detail || "No additional details available."}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </article>
+
+        <article className="dashboard-card">
+          <h2>Audit trail</h2>
+          <p className="dashboard-note">
+            Database-backed events for jobs, profiles, support requests, comments, background checks, ratings, and
+            assignments.
+          </p>
+
+          {activityEvents.length === 0 ? (
+            <div className="empty-state">No audit events have been recorded yet.</div>
+          ) : (
+            <div className="request-list">
+              {activityEvents.map((event) => (
+                <div className="request-item" key={event.id}>
+                  <header>
+                    <div>
+                      <h3>{event.title}</h3>
+                      <p className="request-caption">{new Date(event.created_at).toLocaleString()}</p>
+                    </div>
+                    <span className="pill" style={{ backgroundColor: "#005de8", color: "white" }}>
+                      {event.entity_type}
+                    </span>
+                  </header>
+
+                  <p>{event.summary}</p>
+
+                  <div className="request-meta">
+                    <span className="pill muted">Action: {event.action}</span>
+                    <span className="pill muted">Actor: {event.actor_id ?? "system"}</span>
+                    {event.entity_id ? <span className="pill muted">Entity: {event.entity_id}</span> : null}
+                  </div>
                 </div>
               ))}
             </div>

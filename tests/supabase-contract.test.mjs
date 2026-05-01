@@ -28,6 +28,7 @@ const migrations = [
   "supabase/migrations/20260502000000_helper_background_check_consent.sql",
   "supabase/migrations/20260501163923_urbanclap_booking_spine.sql",
   "supabase/migrations/20260503000000_admin_auth_without_profile.sql",
+  "supabase/migrations/20260504000000_admin_activity_audit_trail.sql",
 ].map(read);
 
 const allMigrations = migrations.join("\n\n");
@@ -48,6 +49,7 @@ const webTermsPage = read("apps/web/app/terms/page.tsx");
 const webPrivacyPage = read("apps/web/app/privacy/page.tsx");
 const webLegalCopy = read("apps/web/lib/legal.ts");
 const adminAuthWithoutProfile = read("supabase/migrations/20260503000000_admin_auth_without_profile.sql");
+const activityAuditTrail = read("supabase/migrations/20260504000000_admin_activity_audit_trail.sql");
 const privacyPolicyDoc = read("docs/legal/privacy-policy.md");
 const mobileMain = read("apps/mobile/lib/main.dart");
 const mobileProfileGate = read("apps/mobile/lib/screens/profile_completion_gate.dart");
@@ -193,10 +195,19 @@ describe("Admin activity visibility", () => {
     assert.match(webAdminPage, /Review jobs, support requests/);
     assert.match(webAdminRequestsPanel, /Support inbox/);
     assert.match(webAdminRequestsPanel, /Activity feed/);
+    assert.match(webAdminRequestsPanel, /Audit trail/);
     assert.match(webAdminRequestsPanel, /open support requests/);
     assert.match(webAdminRequestsPanel, /support_requests/);
     assert.match(webAdminRequestsPanel, /support_request_comments/);
+    assert.match(webAdminRequestsPanel, /activity_events/);
     assert.match(webAdminRequestsPanel, /Every booking, support request, profile update/);
+    assert.match(activityAuditTrail, /create table if not exists public\.activity_events/);
+    assert.match(activityAuditTrail, /Staff can read activity events/);
+    assert.match(activityAuditTrail, /create or replace function public\.record_activity_event\(\)/);
+    assert.match(activityAuditTrail, /log_job_activity/);
+    assert.match(activityAuditTrail, /log_profile_activity/);
+    assert.match(activityAuditTrail, /log_support_request_activity/);
+    assert.match(activityAuditTrail, /log_background_check_activity/);
   });
 });
 
