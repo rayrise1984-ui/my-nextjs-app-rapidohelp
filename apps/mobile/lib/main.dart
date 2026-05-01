@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/legal_terms.dart';
 import 'core/supabase_config.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/profile_completion_gate.dart';
 import 'screens/worker_screen.dart';
 
 Future<void> main() async {
@@ -71,9 +72,12 @@ class _AppShellState extends State<AppShell> {
       builder: (context, snapshot) {
         final session = snapshot.data?.session ?? _session;
         if (session != null) {
-          return TermsAcceptanceGate(
+          return ProfileCompletionGate(
             session: session,
-            child: SessionHome(session: session),
+            child: TermsAcceptanceGate(
+              session: session,
+              child: SessionHome(session: session),
+            ),
           );
         }
         return const AuthScreen();
@@ -325,12 +329,15 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
+  final TextEditingController _fullNameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _phoneCodeController = TextEditingController();
 
   bool _submitting = false;
+  bool _createProfileMode = true;
+  bool _helperAccount = false;
   bool _phoneCodeSent = false;
   bool _usePhoneLogin = false;
   String? _message;
@@ -347,6 +354,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   void dispose() {
+    _fullNameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _phoneController.dispose();
@@ -443,8 +451,17 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _signUpWithPassword() async {
+    final fullName = _fullNameController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text;
+
+    if (fullName.isEmpty) {
+      setState(() {
+        _error = 'Enter your full name first.';
+        _message = null;
+      });
+      return;
+    }
 
     if (email.isEmpty) {
       setState(() {
@@ -480,6 +497,11 @@ class _AuthScreenState extends State<AuthScreen> {
       await Supabase.instance.client.auth.signUp(
         email: email,
         password: password,
+        data: {
+          'full_name': fullName,
+          'role': _helperAccount ? 'agent' : 'customer',
+          'is_worker': _helperAccount,
+        },
       );
 
       if (!mounted) {
@@ -487,7 +509,9 @@ class _AuthScreenState extends State<AuthScreen> {
       }
 
       setState(() {
-        _message = 'Account created. Use Sign in to continue.';
+        _message = _helperAccount
+            ? 'Helper profile created. Use Sign in to continue.'
+            : 'Profile created. Use Sign in to continue.';
       });
     } on AuthException catch (error) {
       if (!mounted) {
@@ -651,7 +675,7 @@ class _AuthScreenState extends State<AuthScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Use a demo account or sign in manually for development.',
+                'Create your profile first, then sign in to continue.',
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
               const SizedBox(height: 24),
@@ -674,71 +698,70 @@ class _AuthScreenState extends State<AuthScreen> {
                     SegmentedButton<bool>(
                       segments: const [
                         ButtonSegment<bool>(
-                          value: false,
-                          label: Text('Email'),
-                          icon: Icon(Icons.email_outlined),
+                          value: true,
+                          label: Text('Create profile'),
+                          icon: Icon(Icons.person_add_outlined),
                         ),
                         ButtonSegment<bool>(
-                          value: true,
-                          label: Text('Phone'),
-                          icon: Icon(Icons.phone_outlined),
+                          value: false,
+                          label: Text('Sign in'),
+                          icon: Icon(Icons.login_outlined),
                         ),
                       ],
-                      selected: {_usePhoneLogin},
+                      selected: {_createProfileMode},
                       onSelectionChanged: _submitting
                           ? null
                           : (selection) {
                               setState(() {
-                                _usePhoneLogin = selection.first;
+                                _createProfileMode = selection.first;
+                                _usePhoneLogin = false;
+                                _phoneCodeSent = false;
                                 _error = null;
                                 _message = null;
                               });
                             },
                     ),
                     const SizedBox(height: 16),
-                    if (!_usePhoneLogin &&
-                        (SupabaseConfig.hasDevCustomerLogin ||
-                            SupabaseConfig.hasDevWorkerLogin)) ...[
+                    if (_createProfileMode) ...[
                       Text(
-                        'Quick start',
+                        'Create your profile before you sign in.',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 12),
-                      if (SupabaseConfig.hasDevCustomerLogin)
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.tonal(
-                            onPressed: _submitting
-                                ? null
-                                : () => _signInToDemoAccount(
-                                      email: SupabaseConfig.devCustomerEmail,
-                                      password:
-                                          SupabaseConfig.devCustomerPassword,
-                                      label: 'demo customer',
-                                    ),
-                            child: const Text('Continue as Demo Customer'),
-                          ),
+                      TextField(
+                        controller: _fullNameController,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                          labelText: 'Full name',
+                          border: OutlineInputBorder(),
                         ),
-                      if (SupabaseConfig.hasDevCustomerLogin &&
-                          SupabaseConfig.hasDevWorkerLogin)
-                        const SizedBox(height: 12),
-                      if (SupabaseConfig.hasDevWorkerLogin)
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.tonal(
-                            onPressed: _submitting
-                                ? null
-                                : () => _signInToDemoAccount(
-                                      email: SupabaseConfig.devWorkerEmail,
-                                      password: SupabaseConfig.devWorkerPassword,
-                                      label: 'demo worker',
-                                    ),
-                            child: const Text('Continue as Demo Worker'),
-                          ),
-                        ),
+                      ),
                       const SizedBox(height: 16),
-                    ],
-                    if (!_usePhoneLogin) ...[
+                      SegmentedButton<bool>(
+                        segments: const [
+                          ButtonSegment<bool>(
+                            value: false,
+                            label: Text('Customer'),
+                            icon: Icon(Icons.person_outline),
+                          ),
+                          ButtonSegment<bool>(
+                            value: true,
+                            label: Text('Helper'),
+                            icon: Icon(Icons.work_outline),
+                          ),
+                        ],
+                        selected: {_helperAccount},
+                        onSelectionChanged: _submitting
+                            ? null
+                            : (selection) {
+                                setState(() {
+                                  _helperAccount = selection.first;
+                                  _error = null;
+                                  _message = null;
+                                });
+                              },
+                      ),
+                      const SizedBox(height: 16),
                       TextField(
                         controller: _emailController,
                         keyboardType: TextInputType.emailAddress,
@@ -757,75 +780,164 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: FilledButton(
-                              onPressed:
-                                  _submitting ? null : _signInWithPassword,
-                              child: Text(
-                                _submitting ? 'Please wait...' : 'Sign in',
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed:
-                                  _submitting ? null : _signUpWithPassword,
-                              child: const Text('Sign up'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ] else ...[
-                      TextField(
-                        controller: _phoneController,
-                        keyboardType: TextInputType.phone,
-                        decoration: const InputDecoration(
-                          labelText: 'Phone number',
-                          hintText: '+15551234567',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      if (_phoneCodeSent) ...[
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: _phoneCodeController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'SMS code',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton(
-                          onPressed: _submitting
-                              ? null
-                              : _phoneCodeSent
-                                  ? _verifyPhoneCode
-                                  : _sendPhoneCode,
+                          onPressed: _submitting ? null : _signUpWithPassword,
                           child: Text(
-                            _submitting
-                                ? 'Please wait...'
-                                : _phoneCodeSent
-                                    ? 'Verify code'
-                                    : 'Send SMS code',
+                            _submitting ? 'Please wait...' : 'Create profile',
                           ),
                         ),
                       ),
+                    ] else ...[
+                      SegmentedButton<bool>(
+                        segments: const [
+                          ButtonSegment<bool>(
+                            value: false,
+                            label: Text('Email'),
+                            icon: Icon(Icons.email_outlined),
+                          ),
+                          ButtonSegment<bool>(
+                            value: true,
+                            label: Text('Phone'),
+                            icon: Icon(Icons.phone_outlined),
+                          ),
+                        ],
+                        selected: {_usePhoneLogin},
+                        onSelectionChanged: _submitting
+                            ? null
+                            : (selection) {
+                                setState(() {
+                                  _usePhoneLogin = selection.first;
+                                  _error = null;
+                                  _message = null;
+                                });
+                              },
+                      ),
+                      const SizedBox(height: 16),
+                      if (!_usePhoneLogin &&
+                          (SupabaseConfig.hasDevCustomerLogin ||
+                              SupabaseConfig.hasWorkerLogin)) ...[
+                        Text(
+                          'Quick start',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 12),
+                        if (SupabaseConfig.hasDevCustomerLogin)
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.tonal(
+                              onPressed: _submitting
+                                  ? null
+                                  : () => _signInToDemoAccount(
+                                        email: SupabaseConfig.devCustomerEmail,
+                                        password:
+                                            SupabaseConfig.devCustomerPassword,
+                                        label: 'demo customer',
+                                      ),
+                              child: const Text('Continue as Demo Customer'),
+                            ),
+                          ),
+                        if (SupabaseConfig.hasDevCustomerLogin &&
+                            SupabaseConfig.hasWorkerLogin)
+                          const SizedBox(height: 12),
+                        if (SupabaseConfig.hasWorkerLogin)
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.tonal(
+                              onPressed: _submitting
+                                  ? null
+                                  : () => _signInToDemoAccount(
+                                        email: SupabaseConfig.workerLoginEmail,
+                                        password:
+                                            SupabaseConfig.workerLoginPassword,
+                                        label: SupabaseConfig.workerLoginName,
+                                      ),
+                              child: Text(SupabaseConfig.workerLoginButtonText),
+                            ),
+                          ),
+                        const SizedBox(height: 16),
+                      ],
+                      if (!_usePhoneLogin) ...[
+                        TextField(
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: const InputDecoration(
+                            labelText: 'Email address',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: _passwordController,
+                          obscureText: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Password',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed:
+                                _submitting ? null : _signInWithPassword,
+                            child: Text(
+                              _submitting ? 'Please wait...' : 'Sign in',
+                            ),
+                          ),
+                        ),
+                      ] else ...[
+                        TextField(
+                          controller: _phoneController,
+                          keyboardType: TextInputType.phone,
+                          decoration: const InputDecoration(
+                            labelText: 'Phone number',
+                            hintText: '+15551234567',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        if (_phoneCodeSent) ...[
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: _phoneCodeController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'SMS code',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: _submitting
+                                ? null
+                                : _phoneCodeSent
+                                    ? _verifyPhoneCode
+                                    : _sendPhoneCode,
+                            child: Text(
+                              _submitting
+                                  ? 'Please wait...'
+                                  : _phoneCodeSent
+                                      ? 'Verify code'
+                                      : 'Send SMS code',
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                     const SizedBox(height: 12),
                     Text(
-                      _usePhoneLogin
-                          ? 'Phone login requires SMS auth to be enabled in Supabase.'
-                          : (SupabaseConfig.hasDevCustomerLogin ||
-                                  SupabaseConfig.hasDevWorkerLogin)
-                              ? 'Demo buttons fill valid accounts instantly. Manual sign-in is still available below.'
-                              : 'Dev mode: use Sign up once, then Sign in with same credentials.',
+                      _createProfileMode
+                          ? 'New customer and helper accounts start here.'
+                          : _usePhoneLogin
+                              ? 'Phone login requires SMS auth to be enabled in Supabase.'
+                              : (SupabaseConfig.hasDevCustomerLogin ||
+                                      SupabaseConfig.hasWorkerLogin)
+                                  ? 'Quick start buttons fill valid accounts instantly. Manual sign-in is still available below.'
+                                  : 'Dev mode: create a profile once, then sign in with the same credentials.',
                     ),
                     if (_message != null) ...[
                       const SizedBox(height: 16),

@@ -3,6 +3,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const DEMO_PASSWORD = 'RapidoDemo123!';
+const DEMO_WORKER_EMAIL =
+  process.env.SMTP_USER || process.env.DEV_WORKER_EMAIL || 'helpdesk@rapidohelp.com';
+const DEMO_WORKER_PASSWORD =
+  process.env.SMTP_PASS || process.env.DEV_WORKER_PASSWORD || DEMO_PASSWORD;
 const WORKER_SERVICE_SETS = [
   [
     'flat_tire',
@@ -42,14 +46,13 @@ const DEMO_USERS = [
     isWorker: false,
   },
   {
-    email: 'demo.worker@rapidohelp.local',
+    email: DEMO_WORKER_EMAIL,
     fullName: 'Demo Worker',
     isWorker: true,
   },
 ];
 
-function loadRootEnv() {
-  const envPath = path.join(__dirname, '..', '.env.local');
+function loadEnvFile(envPath) {
   if (!fs.existsSync(envPath)) return;
 
   for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
@@ -65,6 +68,11 @@ function loadRootEnv() {
   }
 }
 
+function loadRootEnv() {
+  loadEnvFile(path.join(__dirname, '..', '.env.local'));
+  loadEnvFile(path.join(__dirname, '..', '.env'));
+}
+
 async function upsertAuthUser(client, demoUser) {
   const { data: usersData, error: listError } = await client.auth.admin.listUsers();
   if (listError) throw listError;
@@ -73,9 +81,13 @@ async function upsertAuthUser(client, demoUser) {
 
   if (existingUser) {
     const { data, error } = await client.auth.admin.updateUserById(existingUser.id, {
-      password: DEMO_PASSWORD,
+      password: demoUser.isWorker ? DEMO_WORKER_PASSWORD : DEMO_PASSWORD,
       email_confirm: true,
-      user_metadata: { full_name: demoUser.fullName },
+      user_metadata: {
+        full_name: demoUser.fullName,
+        role: demoUser.isWorker ? 'agent' : 'customer',
+        is_worker: demoUser.isWorker,
+      },
     });
     if (error) throw error;
     return data.user;
@@ -83,9 +95,13 @@ async function upsertAuthUser(client, demoUser) {
 
   const { data, error } = await client.auth.admin.createUser({
     email: demoUser.email,
-    password: DEMO_PASSWORD,
+    password: demoUser.isWorker ? DEMO_WORKER_PASSWORD : DEMO_PASSWORD,
     email_confirm: true,
-    user_metadata: { full_name: demoUser.fullName },
+    user_metadata: {
+      full_name: demoUser.fullName,
+      role: demoUser.isWorker ? 'agent' : 'customer',
+      is_worker: demoUser.isWorker,
+    },
   });
   if (error) throw error;
   return data.user;
@@ -98,6 +114,7 @@ async function upsertDemoProfile(client, user, demoUser) {
     const profile = {
       id: user.id,
       full_name: demoUser.fullName,
+      role: demoUser.isWorker ? 'agent' : 'customer',
       is_worker: demoUser.isWorker,
       worker_status: demoUser.isWorker ? 'online' : 'offline',
       service_types: serviceTypes,
@@ -105,7 +122,7 @@ async function upsertDemoProfile(client, user, demoUser) {
         ? 'Roadside helper for flat tires, jump starts, fuel delivery, towing, and general urgent tasks.'
         : null,
       worker_experience_years: demoUser.isWorker ? 4 : null,
-      worker_profile_completed: demoUser.isWorker,
+      worker_profile_completed: false,
     };
 
     const { error } = await client.from('profiles').upsert(profile).eq('id', user.id);
@@ -116,6 +133,34 @@ async function upsertDemoProfile(client, user, demoUser) {
 
     if (error.code !== '22P02' || !demoUser.isWorker) {
       throw error;
+    }
+  }
+
+  if (demoUser.isWorker) {
+    const { error: backgroundError } = await client.from('worker_background_checks').upsert({
+      worker_id: user.id,
+      legal_full_name: demoUser.fullName,
+      ssn_last4: '1234',
+      driver_license_number: 'D1234567',
+      driver_license_state: 'CA',
+      legal_address_line1: '123 Demo Worker Way',
+      legal_address_line2: null,
+      legal_city: 'San Francisco',
+      legal_state: 'CA',
+      legal_postal_code: '94107',
+      payout_account_holder_name: demoUser.fullName,
+      payout_bank_name: 'Demo Bank',
+      payout_account_type: 'checking',
+      payout_account_last4: '4321',
+      payout_routing_last4: '6789',
+      status: 'submitted',
+      submitted_at: new Date().toISOString(),
+      reviewed_at: null,
+      reviewed_by: null,
+    });
+
+    if (backgroundError) {
+      throw backgroundError;
     }
   }
 }
@@ -138,7 +183,17 @@ async function main() {
     const user = await upsertAuthUser(client, demoUser);
     await upsertDemoProfile(client, user, demoUser);
 
-    console.log(`ready:${demoUser.isWorker ? 'worker' : 'customer'}:${demoUser.email}:${DEMO_PASSWORD}`);
+    const passwordSource = demoUser.isWorker
+      ? process.env.SMTP_PASS
+        ? 'SMTP_PASS'
+        : process.env.DEV_WORKER_PASSWORD
+          ? 'DEV_WORKER_PASSWORD'
+          : 'DEMO_PASSWORD'
+      : 'DEMO_PASSWORD';
+
+    console.log(
+      `ready:${demoUser.isWorker ? 'worker' : 'customer'}:${demoUser.email} (password from ${passwordSource})`,
+    );
   }
 }
 

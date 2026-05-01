@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { ProfileCompletionGate } from "@/components/profile-completion-gate";
 import { TermsAcceptanceGate } from "@/components/terms-acceptance-gate";
 import { JobDetailPanel } from "./job-detail-panel";
 
@@ -13,13 +14,15 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
   const { jobId } = await params;
 
   return (
-    <main className="dashboard-shell">
-      <p>
-        <Link href="/dashboard">Back to dashboard</Link>
-      </p>
-      <TermsAcceptanceGate>
-        <JobDetailPanel jobId={jobId} />
-      </TermsAcceptanceGate>
-    </main>
+    <ProfileCompletionGate>
+      <main className="dashboard-shell">
+        <p>
+          <Link href="/dashboard">Back to dashboard</Link>
+        </p>
+        <TermsAcceptanceGate>
+          <JobDetailPanel jobId={jobId} />
+        </TermsAcceptanceGate>
+      </main>
+    </ProfileCompletionGate>
   );
 }

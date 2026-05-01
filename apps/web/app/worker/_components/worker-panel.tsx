@@ -27,10 +27,102 @@ const LOCATION_ZONES = {
 
 const SERVICE_TYPES = bookableServiceTypes;
 
+type WorkerBackgroundCheck = {
+  worker_id: string;
+  legal_full_name: string | null;
+  ssn_last4: string | null;
+  driver_license_number: string | null;
+  driver_license_state: string | null;
+  legal_address_line1: string | null;
+  legal_address_line2: string | null;
+  legal_city: string | null;
+  legal_state: string | null;
+  legal_postal_code: string | null;
+  payout_account_holder_name: string | null;
+  payout_bank_name: string | null;
+  payout_account_type: string | null;
+  payout_account_last4: string | null;
+  payout_routing_last4: string | null;
+  status: string | null;
+  submitted_at: string | null;
+};
+
+type BackgroundCheckInputs = {
+  legalFullName: string;
+  ssnLast4: string;
+  driverLicenseNumber: string;
+  driverLicenseState: string;
+  legalAddressLine1: string;
+  legalAddressLine2: string;
+  legalCity: string;
+  legalState: string;
+  legalPostalCode: string;
+  payoutAccountHolderName: string;
+  payoutBankName: string;
+  payoutAccountType: string;
+  payoutAccountLast4: string;
+  payoutRoutingLast4: string;
+};
+
+const emptyBackgroundCheckInputs: BackgroundCheckInputs = {
+  legalFullName: "",
+  ssnLast4: "",
+  driverLicenseNumber: "",
+  driverLicenseState: "",
+  legalAddressLine1: "",
+  legalAddressLine2: "",
+  legalCity: "",
+  legalState: "",
+  legalPostalCode: "",
+  payoutAccountHolderName: "",
+  payoutBankName: "",
+  payoutAccountType: "",
+  payoutAccountLast4: "",
+  payoutRoutingLast4: "",
+};
+
 const jobMatchesWorkerServices = (job: Job, profile: WorkerProfile | null) => {
   const serviceTypes = profile?.service_types ?? [];
   return serviceTypes.includes(job.service_type);
 };
+
+const backgroundCheckIsSubmitted = (backgroundCheck: WorkerBackgroundCheck | null) =>
+  Boolean(
+    backgroundCheck?.submitted_at &&
+      backgroundCheck.legal_full_name?.trim() &&
+      backgroundCheck.ssn_last4?.match(/^\d{4}$/) &&
+      backgroundCheck.driver_license_number?.trim() &&
+      backgroundCheck.driver_license_state?.match(/^[A-Z]{2}$/) &&
+      backgroundCheck.legal_address_line1?.trim() &&
+      backgroundCheck.legal_city?.trim() &&
+      backgroundCheck.legal_state?.match(/^[A-Z]{2}$/) &&
+      backgroundCheck.legal_postal_code?.trim() &&
+      backgroundCheck.payout_account_holder_name?.trim() &&
+      backgroundCheck.payout_bank_name?.trim() &&
+      ["checking", "savings"].includes((backgroundCheck.payout_account_type ?? "").trim().toLowerCase()) &&
+      backgroundCheck.payout_account_last4?.match(/^\d{4}$/) &&
+      backgroundCheck.payout_routing_last4?.match(/^\d{4}$/),
+  );
+
+const backgroundCheckInputsFromRecord = (
+  record: WorkerBackgroundCheck | null,
+  fallbackLegalName = "",
+): BackgroundCheckInputs => ({
+  legalFullName: record?.legal_full_name ?? fallbackLegalName,
+  ssnLast4: record?.ssn_last4 ?? "",
+  driverLicenseNumber: record?.driver_license_number ?? "",
+  driverLicenseState: record?.driver_license_state ?? "",
+  legalAddressLine1: record?.legal_address_line1 ?? "",
+  legalAddressLine2: record?.legal_address_line2 ?? "",
+  legalCity: record?.legal_city ?? "",
+  legalState: record?.legal_state ?? "",
+  legalPostalCode: record?.legal_postal_code ?? "",
+  payoutAccountHolderName: record?.payout_account_holder_name ?? fallbackLegalName,
+  payoutBankName: record?.payout_bank_name ?? "",
+  payoutAccountType: record?.payout_account_type?.trim().toLowerCase() ?? "",
+  payoutAccountLast4: record?.payout_account_last4 ?? "",
+  payoutRoutingLast4: record?.payout_routing_last4 ?? "",
+});
 
 const money = (amount: number | null | undefined) => `$${Number(amount ?? 0).toFixed(2)}`;
 
@@ -51,6 +143,22 @@ const getWaybillAmounts = (job: Job) => {
     workerPayout: Number(job.worker_payout_amount ?? fallbackSplit.workerPayoutAmount),
   };
 };
+
+const getWorkerJobPayout = (job: Job) => {
+  const directPayout = Number(job.worker_payout_amount ?? 0);
+  if (directPayout > 0) {
+    return directPayout;
+  }
+
+  const payoutBase = Number(job.final_price ?? job.estimated_price ?? 0);
+  if (payoutBase <= 0) {
+    return 0;
+  }
+
+  return calculatePayoutSplit(payoutBase).workerPayoutAmount;
+};
+
+const isActiveWorkerJob = (job: Job) => job.status === "accepted" || job.status === "in_progress";
 
 const downloadWorkerWaybill = (job: Job, workerName: string) => {
   if (job.status !== "completed") {
@@ -122,12 +230,15 @@ export function WorkerPanel() {
   const [workDetailsInput, setWorkDetailsInput] = useState("");
   const [experienceYearsInput, setExperienceYearsInput] = useState("");
   const [serviceTypesInput, setServiceTypesInput] = useState<ServiceType[]>([]);
+  const [backgroundCheck, setBackgroundCheck] = useState<WorkerBackgroundCheck | null>(null);
+  const [backgroundInputs, setBackgroundInputs] = useState<BackgroundCheckInputs>(emptyBackgroundCheckInputs);
   const [savingProfile, setSavingProfile] = useState(false);
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [feedServiceFilter, setFeedServiceFilter] = useState<"all" | ServiceType>("all");
   const [pendingJobs, setPendingJobs] = useState<Job[]>([]);
   const [acceptedJobs, setAcceptedJobs] = useState<Job[]>([]);
   const [completedJobs, setCompletedJobs] = useState<Job[]>([]);
+  const [workerHistoryJobs, setWorkerHistoryJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -137,7 +248,7 @@ export function WorkerPanel() {
   const [completingJobId, setCompletingJobId] = useState<string | null>(null);
   const [finalPriceInputs, setFinalPriceInputs] = useState<Record<string, string>>({});
 
-  const isWorkerProfileComplete = (profile: WorkerProfile | null) => {
+  const isWorkerProfileComplete = (profile: WorkerProfile | null, check: WorkerBackgroundCheck | null) => {
     if (!profile) return false;
     const details = (profile.worker_work_details ?? "").trim();
     const hasYears = typeof profile.worker_experience_years === "number" && profile.worker_experience_years >= 0;
@@ -147,7 +258,8 @@ export function WorkerPanel() {
       profile.worker_profile_completed &&
       details.length >= 10 &&
       hasYears &&
-      serviceTypes.length > 0,
+      serviceTypes.length > 0 &&
+      backgroundCheckIsSubmitted(check),
     );
   };
 
@@ -170,7 +282,15 @@ export function WorkerPanel() {
     );
   };
 
-  const workerProfileComplete = isWorkerProfileComplete(workerProfile);
+  const syncBackgroundCheckState = (
+    rawBackgroundCheck: WorkerBackgroundCheck | null,
+    fallbackLegalName = "",
+  ) => {
+    setBackgroundCheck(rawBackgroundCheck);
+    setBackgroundInputs(backgroundCheckInputsFromRecord(rawBackgroundCheck, fallbackLegalName));
+  };
+
+  const workerProfileComplete = isWorkerProfileComplete(workerProfile, backgroundCheck);
   const workerVerified = workerProfile?.worker_verified ?? false;
   const workerDisabled = workerProfile?.worker_disabled ?? false;
   const workerCanAcceptNewJobs = workerProfileComplete && workerVerified && !workerDisabled;
@@ -180,7 +300,7 @@ export function WorkerPanel() {
 
     if (!client) {
       setLoading(false);
-      setError("Configure Supabase to get started.");
+      setError("Live helper services are not available yet. Please try again shortly.");
       return;
     }
 
@@ -216,6 +336,25 @@ export function WorkerPanel() {
         syncWorkerProfileState(profileData as WorkerProfile);
       }
 
+      const { data: backgroundData, error: backgroundError } = await client
+        .from("worker_background_checks")
+        .select(
+          "worker_id, legal_full_name, ssn_last4, driver_license_number, driver_license_state, legal_address_line1, legal_address_line2, legal_city, legal_state, legal_postal_code, payout_account_holder_name, payout_bank_name, payout_account_type, payout_account_last4, payout_routing_last4, status, submitted_at",
+        )
+        .eq("worker_id", nextSession.user.id)
+        .maybeSingle();
+
+      if (disposed) return;
+
+      if (backgroundError) {
+        setError(backgroundError.message);
+      } else {
+        syncBackgroundCheckState(
+          (backgroundData ?? null) as WorkerBackgroundCheck | null,
+          ((profileData as WorkerProfile | null)?.full_name ?? "").trim(),
+        );
+      }
+
       // Load pending jobs (jobs we haven't been offered yet)
       const { data: pendingData, error: pendingError } = await client
         .from("jobs")
@@ -238,6 +377,17 @@ export function WorkerPanel() {
 
       if (!disposed && completedData) {
         setCompletedJobs((completedData ?? []) as Job[]);
+      }
+
+      const { data: historyData } = await client
+        .from("jobs")
+        .select("*")
+        .eq("worker_id", nextSession.user.id)
+        .order("created_at", { ascending: false });
+
+      if (!disposed && historyData) {
+        const historyRows = (historyData ?? []) as Job[];
+        setWorkerHistoryJobs(historyRows);
       }
 
       // Load accepted jobs (jobs we've accepted)
@@ -293,6 +443,9 @@ export function WorkerPanel() {
           (payload: { new: Job }) => {
             const newJob = payload.new as Job;
             setPendingJobs((current) => addJob(current, newJob));
+            if (newJob.worker_id === nextSession.user.id) {
+              setWorkerHistoryJobs((current) => addJob(current.filter((job) => job.id !== newJob.id), newJob));
+            }
           },
         )
         .on(
@@ -305,13 +458,17 @@ export function WorkerPanel() {
           (payload: { new: Job }) => {
             const updated = payload.new as Job;
             setPendingJobs((current) => current.filter((j) => j.id !== updated.id));
+            setWorkerHistoryJobs((current) => {
+              const withoutUpdated = current.filter((job) => job.id !== updated.id);
+              return updated.worker_id === nextSession.user.id
+                ? addJob(withoutUpdated, updated)
+                : withoutUpdated;
+            });
             setAcceptedJobs((current) => {
               const withoutUpdated = current.filter((j) => j.id !== updated.id);
-              const isActiveWorkerJob =
-                updated.worker_id === nextSession.user.id &&
-                (updated.status === "accepted" || updated.status === "in_progress");
+              const isActiveWorker = updated.worker_id === nextSession.user.id && isActiveWorkerJob(updated);
 
-              return isActiveWorkerJob ? [updated, ...withoutUpdated] : withoutUpdated;
+              return isActiveWorker ? [updated, ...withoutUpdated] : withoutUpdated;
             });
             setCompletedJobs((current) => {
               const withoutUpdated = current.filter((j) => j.id !== updated.id);
@@ -369,6 +526,7 @@ export function WorkerPanel() {
       setMessage("Job accepted! Head to the location.");
       setPendingJobs((current) => current.filter((j) => j.id !== acceptedJob.id));
       setAcceptedJobs((current) => [acceptedJob, ...current.filter((j) => j.id !== acceptedJob.id)]);
+      setWorkerHistoryJobs((current) => addJob(current.filter((job) => job.id !== acceptedJob.id), acceptedJob));
       setFinalPriceInputs((current) => ({
         ...current,
         [acceptedJob.id]: String(acceptedJob.final_price ?? acceptedJob.estimated_price ?? ""),
@@ -400,6 +558,7 @@ export function WorkerPanel() {
 
       const updated = data as Job;
       setAcceptedJobs((current) => [updated, ...current.filter((entry) => entry.id !== updated.id)]);
+      setWorkerHistoryJobs((current) => addJob(current.filter((job) => job.id !== updated.id), updated));
       setMessage("Job marked in progress.");
       setWorkerProfile((current) => current ? { ...current, worker_status: "on_job" } : current);
     } catch (err) {
@@ -420,11 +579,16 @@ export function WorkerPanel() {
     if (!client) return;
 
     try {
-      const { error: cancelError } = await client.rpc("cancel_worker_job", {
+      const { data, error: cancelError } = await client.rpc("cancel_worker_job", {
         p_job_id: jobId,
       });
 
       if (cancelError) throw cancelError;
+
+      if (data) {
+        const cancelledJob = data as Job;
+        setWorkerHistoryJobs((current) => addJob(current.filter((job) => job.id !== cancelledJob.id), cancelledJob));
+      }
 
       setAcceptedJobs((current) => current.filter((entry) => entry.id !== jobId));
       setFinalPriceInputs((current) => {
@@ -466,7 +630,7 @@ export function WorkerPanel() {
 
       if (completeError) throw completeError;
 
-      setMessage(`Job marked complete at $${parsedFinalPrice.toFixed(2)}. Waybill is ready in completed work.`);
+      setMessage(`Job marked complete at $${parsedFinalPrice.toFixed(2)}. Waybill is ready in your work history.`);
       setAcceptedJobs((current) => current.filter((entry) => entry.id !== jobId));
       setFinalPriceInputs((current) => {
         const next = { ...current };
@@ -475,6 +639,7 @@ export function WorkerPanel() {
       });
       if (data) {
         setCompletedJobs((current) => [data as Job, ...current.filter((entry) => entry.id !== jobId)]);
+        setWorkerHistoryJobs((current) => addJob(current.filter((job) => job.id !== jobId), data as Job));
       }
       setWorkerProfile((current) => current ? { ...current, worker_status: "online" } : current);
 
@@ -522,6 +687,20 @@ export function WorkerPanel() {
 
     const details = workDetailsInput.trim();
     const years = Number.parseInt(experienceYearsInput, 10);
+    const legalFullName = backgroundInputs.legalFullName.trim();
+    const ssnLast4 = backgroundInputs.ssnLast4.replace(/\D/g, "");
+    const driverLicenseNumber = backgroundInputs.driverLicenseNumber.trim();
+    const driverLicenseState = backgroundInputs.driverLicenseState.trim().toUpperCase();
+    const legalAddressLine1 = backgroundInputs.legalAddressLine1.trim();
+    const legalAddressLine2 = backgroundInputs.legalAddressLine2.trim();
+    const legalCity = backgroundInputs.legalCity.trim();
+    const legalState = backgroundInputs.legalState.trim().toUpperCase();
+    const legalPostalCode = backgroundInputs.legalPostalCode.trim().toUpperCase();
+    const payoutAccountHolderName = backgroundInputs.payoutAccountHolderName.trim();
+    const payoutBankName = backgroundInputs.payoutBankName.trim();
+    const payoutAccountType = backgroundInputs.payoutAccountType.trim().toLowerCase();
+    const payoutAccountLast4 = backgroundInputs.payoutAccountLast4.replace(/\D/g, "");
+    const payoutRoutingLast4 = backgroundInputs.payoutRoutingLast4.replace(/\D/g, "");
 
     if (details.length < 10) {
       setError("Please add more work details (at least 10 characters).");
@@ -538,6 +717,56 @@ export function WorkerPanel() {
       return;
     }
 
+    if (!legalFullName) {
+      setError("Enter your legal full name for the background check.");
+      return;
+    }
+
+    if (!/^\d{4}$/.test(ssnLast4)) {
+      setError("Enter the last 4 digits of your Social Security number.");
+      return;
+    }
+
+    if (driverLicenseNumber.length < 3) {
+      setError("Enter your driver license number.");
+      return;
+    }
+
+    if (!/^[A-Z]{2}$/.test(driverLicenseState)) {
+      setError("Enter the two-letter state for your driver license.");
+      return;
+    }
+
+    if (!legalAddressLine1 || !legalCity || !/^[A-Z]{2}$/.test(legalState) || !legalPostalCode) {
+      setError("Enter your legal address, city, two-letter state, and ZIP/postal code.");
+      return;
+    }
+
+    if (!payoutAccountHolderName) {
+      setError("Enter the account holder name for your payout account.");
+      return;
+    }
+
+    if (!payoutBankName) {
+      setError("Enter the bank name for your payout account.");
+      return;
+    }
+
+    if (!["checking", "savings"].includes(payoutAccountType)) {
+      setError("Select a payout account type.");
+      return;
+    }
+
+    if (!/^\d{4}$/.test(payoutAccountLast4)) {
+      setError("Enter the last 4 digits of your payout account number.");
+      return;
+    }
+
+    if (!/^\d{4}$/.test(payoutRoutingLast4)) {
+      setError("Enter the last 4 digits of your routing number.");
+      return;
+    }
+
     const client = createSupabaseBrowserClient();
     if (!client) return;
 
@@ -547,32 +776,58 @@ export function WorkerPanel() {
 
     try {
       const resolvedStatus = workerCanAcceptNewJobs ? workerStatusInput : "offline";
-      const updates = {
-        worker_status: resolvedStatus,
-        worker_work_details: details,
-        worker_experience_years: years,
-        service_types: serviceTypesInput,
-        worker_profile_completed: true,
-      };
-
-      const { error: saveError } = await client
-        .from("profiles")
-        .update(updates)
-        .eq("id", session.user.id);
+      const { data: updatedProfile, error: saveError } = await client.rpc("submit_worker_profile", {
+        p_worker_status: resolvedStatus,
+        p_worker_work_details: details,
+        p_worker_experience_years: years,
+        p_service_types: serviceTypesInput,
+        p_legal_full_name: legalFullName,
+        p_ssn_last4: ssnLast4,
+        p_driver_license_number: driverLicenseNumber,
+        p_driver_license_state: driverLicenseState,
+        p_legal_address_line1: legalAddressLine1,
+        p_legal_address_line2: legalAddressLine2,
+        p_legal_city: legalCity,
+        p_legal_state: legalState,
+        p_legal_postal_code: legalPostalCode,
+        p_payout_account_holder_name: payoutAccountHolderName,
+        p_payout_bank_name: payoutBankName,
+        p_payout_account_type: payoutAccountType,
+        p_payout_account_last4: payoutAccountLast4,
+        p_payout_routing_last4: payoutRoutingLast4,
+      });
 
       if (saveError) throw saveError;
 
-      setWorkerProfile({
-        ...workerProfile,
-        ...updates,
-      });
+      syncWorkerProfileState(updatedProfile as WorkerProfile);
+      const nextBackgroundCheck: WorkerBackgroundCheck = {
+        worker_id: session.user.id,
+        legal_full_name: legalFullName,
+        ssn_last4: ssnLast4,
+        driver_license_number: driverLicenseNumber,
+        driver_license_state: driverLicenseState,
+        legal_address_line1: legalAddressLine1,
+        legal_address_line2: legalAddressLine2 || null,
+        legal_city: legalCity,
+        legal_state: legalState,
+        legal_postal_code: legalPostalCode,
+        payout_account_holder_name: payoutAccountHolderName,
+        payout_bank_name: payoutBankName,
+        payout_account_type: payoutAccountType,
+        payout_account_last4: payoutAccountLast4,
+        payout_routing_last4: payoutRoutingLast4,
+        status: "submitted",
+        submitted_at: new Date().toISOString(),
+      };
+      setBackgroundCheck(nextBackgroundCheck);
+      setBackgroundInputs(backgroundCheckInputsFromRecord(nextBackgroundCheck));
       if (feedServiceFilter !== "all" && !serviceTypesInput.includes(feedServiceFilter)) {
         setFeedServiceFilter("all");
       }
       setMessage(
         workerVerified && !workerDisabled
           ? "Worker profile saved."
-          : "Worker profile saved. Staff review is required before you can go online.",
+          : "Worker profile, background check, and payout account details saved. Staff review is required before you can go online.",
       );
       setShowProfileEditor(false);
     } catch (err) {
@@ -587,7 +842,7 @@ export function WorkerPanel() {
       {!options?.compactHeader && <h2 style={{ marginBottom: "4px" }}>Complete Worker Profile</h2>}
       {!options?.compactHeader && (
         <p style={{ marginTop: 0, color: "#555" }}>
-          Share your status, work details, and experience before accepting jobs.
+          Share your services, experience, background check details, and payout account information before accepting jobs.
         </p>
       )}
 
@@ -673,6 +928,260 @@ export function WorkerPanel() {
         />
       </label>
 
+      <fieldset style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "14px", margin: 0 }}>
+        <legend style={{ fontWeight: 700, padding: "0 6px" }}>Background check details</legend>
+        <p style={{ margin: "0 0 12px", color: "#555", fontSize: "13px", lineHeight: 1.5 }}>
+          Use your legal information. RapidoHelp stores SSN last 4 here; full SSN collection should stay with an approved background-check provider.
+        </p>
+
+        <div style={{ display: "grid", gap: "12px" }}>
+          <label style={{ display: "block" }}>
+            <span style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>Legal full name</span>
+            <input
+              autoComplete="name"
+              disabled={savingProfile}
+              onChange={(event) =>
+                setBackgroundInputs((current) => ({ ...current, legalFullName: event.target.value }))
+              }
+              placeholder="First Middle Last"
+              type="text"
+              value={backgroundInputs.legalFullName}
+              style={{ width: "100%" }}
+            />
+          </label>
+
+          <div style={{ display: "grid", gap: "12px", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+            <label style={{ display: "block" }}>
+              <span style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>SSN last 4</span>
+              <input
+                autoComplete="off"
+                disabled={savingProfile}
+                inputMode="numeric"
+                maxLength={4}
+                onChange={(event) =>
+                  setBackgroundInputs((current) => ({
+                    ...current,
+                    ssnLast4: event.target.value.replace(/\D/g, "").slice(0, 4),
+                  }))
+                }
+                placeholder="1234"
+                type="text"
+                value={backgroundInputs.ssnLast4}
+                style={{ width: "100%" }}
+              />
+            </label>
+
+            <label style={{ display: "block" }}>
+              <span style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>Driver license state</span>
+              <input
+                autoComplete="off"
+                disabled={savingProfile}
+                maxLength={2}
+                onChange={(event) =>
+                  setBackgroundInputs((current) => ({
+                    ...current,
+                    driverLicenseState: event.target.value.toUpperCase().slice(0, 2),
+                  }))
+                }
+                placeholder="CA"
+                type="text"
+                value={backgroundInputs.driverLicenseState}
+                style={{ width: "100%" }}
+              />
+            </label>
+          </div>
+
+          <label style={{ display: "block" }}>
+            <span style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>Driver license number</span>
+            <input
+              autoComplete="off"
+              disabled={savingProfile}
+              onChange={(event) =>
+                setBackgroundInputs((current) => ({ ...current, driverLicenseNumber: event.target.value }))
+              }
+              type="text"
+              value={backgroundInputs.driverLicenseNumber}
+              style={{ width: "100%" }}
+            />
+          </label>
+
+          <label style={{ display: "block" }}>
+            <span style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>Legal address</span>
+            <input
+              autoComplete="address-line1"
+              disabled={savingProfile}
+              onChange={(event) =>
+                setBackgroundInputs((current) => ({ ...current, legalAddressLine1: event.target.value }))
+              }
+              placeholder="Street address"
+              type="text"
+              value={backgroundInputs.legalAddressLine1}
+              style={{ width: "100%" }}
+            />
+          </label>
+
+          <label style={{ display: "block" }}>
+            <span style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>Apt, suite, unit (optional)</span>
+            <input
+              autoComplete="address-line2"
+              disabled={savingProfile}
+              onChange={(event) =>
+                setBackgroundInputs((current) => ({ ...current, legalAddressLine2: event.target.value }))
+              }
+              type="text"
+              value={backgroundInputs.legalAddressLine2}
+              style={{ width: "100%" }}
+            />
+          </label>
+
+          <div style={{ display: "grid", gap: "12px", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+            <label style={{ display: "block" }}>
+              <span style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>City</span>
+              <input
+                autoComplete="address-level2"
+                disabled={savingProfile}
+                onChange={(event) =>
+                  setBackgroundInputs((current) => ({ ...current, legalCity: event.target.value }))
+                }
+                type="text"
+                value={backgroundInputs.legalCity}
+                style={{ width: "100%" }}
+              />
+            </label>
+
+            <label style={{ display: "block" }}>
+              <span style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>State</span>
+              <input
+                autoComplete="address-level1"
+                disabled={savingProfile}
+                maxLength={2}
+                onChange={(event) =>
+                  setBackgroundInputs((current) => ({
+                    ...current,
+                    legalState: event.target.value.toUpperCase().slice(0, 2),
+                  }))
+                }
+                placeholder="CA"
+                type="text"
+                value={backgroundInputs.legalState}
+                style={{ width: "100%" }}
+              />
+            </label>
+
+            <label style={{ display: "block" }}>
+              <span style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>ZIP / postal code</span>
+              <input
+                autoComplete="postal-code"
+                disabled={savingProfile}
+                onChange={(event) =>
+                  setBackgroundInputs((current) => ({ ...current, legalPostalCode: event.target.value }))
+                }
+                type="text"
+                value={backgroundInputs.legalPostalCode}
+                style={{ width: "100%" }}
+              />
+            </label>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "14px", margin: 0 }}>
+        <legend style={{ fontWeight: 700, padding: "0 6px" }}>Payout account information</legend>
+        <p style={{ margin: "0 0 12px", color: "#555", fontSize: "13px", lineHeight: 1.5 }}>
+          Use the bank account where your worker payouts should go. We keep the payout details you enter here on file for review.
+        </p>
+
+        <div style={{ display: "grid", gap: "12px" }}>
+          <label style={{ display: "block" }}>
+            <span style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>Account holder name</span>
+            <input
+              autoComplete="name"
+              disabled={savingProfile}
+              onChange={(event) =>
+                setBackgroundInputs((current) => ({ ...current, payoutAccountHolderName: event.target.value }))
+              }
+              placeholder="First Middle Last"
+              type="text"
+              value={backgroundInputs.payoutAccountHolderName}
+              style={{ width: "100%" }}
+            />
+          </label>
+
+          <label style={{ display: "block" }}>
+            <span style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>Bank name</span>
+            <input
+              autoComplete="organization"
+              disabled={savingProfile}
+              onChange={(event) =>
+                setBackgroundInputs((current) => ({ ...current, payoutBankName: event.target.value }))
+              }
+              placeholder="Bank of Example"
+              type="text"
+              value={backgroundInputs.payoutBankName}
+              style={{ width: "100%" }}
+            />
+          </label>
+
+          <div style={{ display: "grid", gap: "12px", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+            <label style={{ display: "block" }}>
+              <span style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>Account type</span>
+              <select
+                disabled={savingProfile}
+                value={backgroundInputs.payoutAccountType}
+                onChange={(event) =>
+                  setBackgroundInputs((current) => ({ ...current, payoutAccountType: event.target.value }))
+                }
+                style={{ width: "100%" }}
+              >
+                <option value="">Select one</option>
+                <option value="checking">Checking</option>
+                <option value="savings">Savings</option>
+              </select>
+            </label>
+
+            <label style={{ display: "block" }}>
+              <span style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>Account last 4</span>
+              <input
+                autoComplete="off"
+                disabled={savingProfile}
+                inputMode="numeric"
+                maxLength={4}
+                onChange={(event) =>
+                  setBackgroundInputs((current) => ({
+                    ...current,
+                    payoutAccountLast4: event.target.value.replace(/\D/g, "").slice(0, 4),
+                  }))
+                }
+                placeholder="1234"
+                type="text"
+                value={backgroundInputs.payoutAccountLast4}
+                style={{ width: "100%" }}
+              />
+            </label>
+
+            <label style={{ display: "block" }}>
+              <span style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>Routing last 4</span>
+              <input
+                autoComplete="off"
+                disabled={savingProfile}
+                inputMode="numeric"
+                maxLength={4}
+                onChange={(event) =>
+                  setBackgroundInputs((current) => ({
+                    ...current,
+                    payoutRoutingLast4: event.target.value.replace(/\D/g, "").slice(0, 4),
+                  }))
+                }
+                placeholder="6789"
+                type="text"
+                value={backgroundInputs.payoutRoutingLast4}
+                style={{ width: "100%" }}
+              />
+            </label>
+          </div>
+        </div>
+      </fieldset>
+
       <div style={{ display: "flex", gap: "8px" }}>
         <button
           onClick={saveWorkerProfile}
@@ -729,15 +1238,14 @@ export function WorkerPanel() {
   }
 
   const availableServiceTypes = workerProfile?.service_types ?? [];
+  const totalEarnings = Number(workerProfile?.total_earnings ?? 0);
+  const historyJobCount = workerHistoryJobs.length;
   const visiblePendingJobs = workerCanAcceptNewJobs
     ? pendingJobs.filter((job) => {
         if (!jobMatchesWorkerServices(job, workerProfile)) return false;
         return feedServiceFilter === "all" || job.service_type === feedServiceFilter;
       })
     : [];
-  const paidEarnings = completedJobs
-    .filter((job) => job.payment_status === "paid")
-    .reduce((sum, job) => sum + Number(job.worker_payout_amount ?? 0), 0);
   const pendingPayout = completedJobs
     .filter((job) => job.payment_status !== "paid")
     .reduce((sum, job) => {
@@ -798,10 +1306,14 @@ export function WorkerPanel() {
         <p style={{ margin: "0", fontSize: "13px", color: "#666" }}>
           Services: {availableServiceTypes.map((type) => serviceTypeLabels[type]).join(", ")}
         </p>
+        <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#666" }}>
+          Background check: {backgroundCheck?.status?.replaceAll("_", " ") ?? "not submitted"}
+          {backgroundCheck?.ssn_last4 ? ` · SSN last 4 ending ${backgroundCheck.ssn_last4}` : ""}
+        </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "12px" }}>
-          <span className="pill muted">Paid earnings: ${paidEarnings.toFixed(2)}</span>
+          <span className="pill muted">Total earnings: ${totalEarnings.toFixed(2)}</span>
           <span className="pill muted">Pending payout: ${pendingPayout.toFixed(2)}</span>
-          <span className="pill muted">{completedJobs.length} completed</span>
+          <span className="pill muted">{historyJobCount} work history items</span>
         </div>
         <div style={{ marginTop: "12px" }}>
           <button
@@ -970,51 +1482,90 @@ export function WorkerPanel() {
         </div>
       )}
 
-      {/* Completed jobs */}
-      {completedJobs.length > 0 && (
-        <div style={{ marginBottom: "32px" }}>
-          <h2 style={{ marginBottom: "12px" }}>
-            Completed work <span style={{ color: "#666", fontSize: "14px" }}>({completedJobs.length})</span>
-          </h2>
+      {/* Work history */}
+      <div style={{ marginBottom: "32px" }}>
+        <h2 style={{ marginBottom: "12px" }}>
+          Work history <span style={{ color: "#666", fontSize: "14px" }}>({historyJobCount})</span>
+        </h2>
+        {workerHistoryJobs.length === 0 ? (
+          <div style={{ padding: "24px", textAlign: "center", color: "#666" }}>
+            <p>No work history yet.</p>
+            <p style={{ fontSize: "12px", marginTop: "8px" }}>
+              Completed, active, and cancelled jobs will appear here once you start working.
+            </p>
+          </div>
+        ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {completedJobs.map((job) => {
-              const total = Number(job.final_price ?? job.estimated_price ?? 0);
+            {workerHistoryJobs.map((job) => {
+              const payoutAmount = getWorkerJobPayout(job);
+              const payoutLabel =
+                job.status === "completed"
+                  ? job.payment_status === "paid"
+                    ? `Earned ${money(payoutAmount)}`
+                    : `Pending payout ${money(payoutAmount)}`
+                  : job.status === "cancelled_by_worker"
+                    ? "No payout"
+                    : payoutAmount > 0
+                      ? `Potential payout ${money(payoutAmount)}`
+                      : "Payout pending";
+              const timelineLabel = job.completed_at
+                ? `Completed ${new Date(job.completed_at).toLocaleString()}`
+                : job.accepted_at
+                  ? `Accepted ${new Date(job.accepted_at).toLocaleString()}`
+                  : `Created ${new Date(job.created_at).toLocaleString()}`;
+              const isCompleted = job.status === "completed";
+
               return (
                 <div key={job.id} style={{ padding: "16px", border: "1px solid #ddd", borderRadius: "8px", backgroundColor: "#fff" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", marginBottom: "8px" }}>
                     <h3 style={{ margin: "0", fontSize: "16px" }}>{serviceTypeLabels[job.service_type]}</h3>
-                    <span style={{ fontSize: "14px", fontWeight: 600, color: "#0057FF" }}>
-                      {money(total)}
+                    <span
+                      style={{
+                        padding: "4px 12px",
+                        backgroundColor: statusColor(job.status),
+                        color: "white",
+                        borderRadius: "12px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {jobStatusLabels[job.status]}
                     </span>
                   </div>
                   <p style={{ margin: "0 0 8px 0", color: "#333" }}>{job.description}</p>
-                  <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#666" }}>
-                    {job.completed_at ? `Completed ${new Date(job.completed_at).toLocaleString()}` : "Completed"}
-                  </p>
+                  {job.location_name && (
+                    <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#666" }}>
+                      Location: {job.location_name}
+                    </p>
+                  )}
+                  <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#666" }}>{timelineLabel}</p>
+                  <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#666" }}>{payoutLabel}</p>
                   <p style={{ margin: "0 0 12px 0", fontSize: "13px", color: "#666" }}>
                     {paymentStatusLabels[job.payment_status]}
                   </p>
-                  <button
-                    onClick={() => downloadWorkerWaybill(job, workerDisplayName)}
-                    type="button"
-                    style={{
-                      padding: "8px 16px",
-                      backgroundColor: "#0057FF",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "6px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Download waybill
-                  </button>
+                  {isCompleted && (
+                    <button
+                      onClick={() => downloadWorkerWaybill(job, workerDisplayName)}
+                      type="button"
+                      style={{
+                        padding: "8px 16px",
+                        backgroundColor: "#0057FF",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "6px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Download waybill
+                    </button>
+                  )}
                 </div>
               );
             })}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Pending jobs */}
       <div>

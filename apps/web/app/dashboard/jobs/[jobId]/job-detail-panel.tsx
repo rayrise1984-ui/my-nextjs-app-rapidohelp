@@ -71,7 +71,7 @@ export function JobDetailPanel({ jobId }: JobDetailPanelProps) {
 
     if (!client) {
       setLoading(false);
-      setError("Configure Supabase to view job details.");
+      setError("Live job details are not available yet. Please try again shortly.");
       return;
     }
 

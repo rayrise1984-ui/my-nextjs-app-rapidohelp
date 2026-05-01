@@ -35,6 +35,21 @@ type AdminWorkerProfile = {
   updated_at: string | null;
 };
 
+type WorkerBackgroundCheck = {
+  worker_id: string;
+  legal_full_name: string | null;
+  ssn_last4: string | null;
+  driver_license_number: string | null;
+  driver_license_state: string | null;
+  legal_address_line1: string | null;
+  legal_address_line2: string | null;
+  legal_city: string | null;
+  legal_state: string | null;
+  legal_postal_code: string | null;
+  status: string | null;
+  submitted_at: string | null;
+};
+
 type WorkerAccessDraft = {
   worker_verified: boolean;
   worker_disabled: boolean;
@@ -95,6 +110,7 @@ export function AdminRequestsPanel() {
   const [role, setRole] = useState<AppRole | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [workers, setWorkers] = useState<AdminWorkerProfile[]>([]);
+  const [backgroundChecksByWorkerId, setBackgroundChecksByWorkerId] = useState<Record<string, WorkerBackgroundCheck>>({});
   const [statusDrafts, setStatusDrafts] = useState<Record<string, JobStatus>>({});
   const [workerDrafts, setWorkerDrafts] = useState<Record<string, WorkerAccessDraft>>({});
   const [loading, setLoading] = useState(true);
@@ -108,7 +124,7 @@ export function AdminRequestsPanel() {
 
     if (!client) {
       setLoading(false);
-      setError("Set Supabase environment variables before opening admin tools.");
+      setError("Live admin services are not available yet. Please try again shortly.");
       return;
     }
 
@@ -116,6 +132,7 @@ export function AdminRequestsPanel() {
     let authSubscription: { unsubscribe: () => void } | null = null;
     let jobChannel: ReturnType<typeof client.channel> | null = null;
     let profileChannel: ReturnType<typeof client.channel> | null = null;
+    let backgroundChannel: ReturnType<typeof client.channel> | null = null;
 
     const initialize = async () => {
       const { data } = await client.auth.getSession();
@@ -153,7 +170,7 @@ export function AdminRequestsPanel() {
         return;
       }
 
-      const [jobsResult, workersResult] = await Promise.all([
+      const [jobsResult, workersResult, backgroundChecksResult] = await Promise.all([
         client.from("jobs").select("*").order("created_at", { ascending: false }),
         client
           .from("profiles")
@@ -161,6 +178,12 @@ export function AdminRequestsPanel() {
             "id, full_name, role, is_worker, worker_status, worker_work_details, worker_experience_years, worker_rating_avg, worker_rating_count, total_earnings, worker_profile_completed, worker_verified, worker_disabled, service_types, updated_at",
           )
           .eq("is_worker", true)
+          .order("updated_at", { ascending: false }),
+        client
+          .from("worker_background_checks")
+          .select(
+            "worker_id, legal_full_name, ssn_last4, driver_license_number, driver_license_state, legal_address_line1, legal_address_line2, legal_city, legal_state, legal_postal_code, status, submitted_at",
+          )
           .order("updated_at", { ascending: false }),
       ]);
 
@@ -189,6 +212,15 @@ export function AdminRequestsPanel() {
               },
             ]),
           ),
+        );
+      }
+
+      if (backgroundChecksResult.error) {
+        setError(backgroundChecksResult.error.message);
+      } else {
+        const nextBackgroundChecks = (backgroundChecksResult.data ?? []) as WorkerBackgroundCheck[];
+        setBackgroundChecksByWorkerId(
+          Object.fromEntries(nextBackgroundChecks.map((check) => [check.worker_id, check])),
         );
       }
 
@@ -253,6 +285,33 @@ export function AdminRequestsPanel() {
         )
         .subscribe();
 
+      backgroundChannel = client.channel(`admin-background-checks-${nextSession.user.id}`);
+      (backgroundChannel as any)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "worker_background_checks",
+          },
+          (payload: {
+            eventType: "INSERT" | "UPDATE" | "DELETE";
+            new: WorkerBackgroundCheck;
+            old: { worker_id?: string };
+          }) => {
+            setBackgroundChecksByWorkerId((current) => {
+              if (payload.eventType === "DELETE") {
+                const next = { ...current };
+                if (payload.old.worker_id) delete next[payload.old.worker_id];
+                return next;
+              }
+
+              return { ...current, [payload.new.worker_id]: payload.new };
+            });
+          },
+        )
+        .subscribe();
+
       authSubscription = client.auth
         .onAuthStateChange((_event, nextSessionState) => {
           setSession(nextSessionState);
@@ -270,6 +329,7 @@ export function AdminRequestsPanel() {
       authSubscription?.unsubscribe();
       if (jobChannel) void client.removeChannel(jobChannel as never);
       if (profileChannel) void client.removeChannel(profileChannel as never);
+      if (backgroundChannel) void client.removeChannel(backgroundChannel as never);
     };
   }, [router]);
 
@@ -374,7 +434,7 @@ export function AdminRequestsPanel() {
       <div className="dashboard-stack">
         <article className="dashboard-card">
           <h2>Worker review queue</h2>
-          <p className="dashboard-note">Approve completed worker profiles, pause marketplace access, and track who is live.</p>
+          <p className="dashboard-note">Approve completed worker profiles, pause service access, and track who is live.</p>
 
           {workers.length === 0 ? (
             <div className="empty-state">No worker profiles found yet.</div>
@@ -385,6 +445,7 @@ export function AdminRequestsPanel() {
                   worker_verified: worker.worker_verified ?? false,
                   worker_disabled: worker.worker_disabled ?? false,
                 };
+                const backgroundCheck = backgroundChecksByWorkerId[worker.id];
                 const services = (worker.service_types ?? []).map((type) => serviceTypeLabels[type]).join(", ");
                 const isDirty =
                   accessDraft.worker_verified !== (worker.worker_verified ?? false) ||
@@ -424,8 +485,32 @@ export function AdminRequestsPanel() {
                       <span className="pill muted">
                         {worker.worker_profile_completed ? "Profile complete" : "Profile incomplete"}
                       </span>
+                      <span className="pill muted">
+                        Background: {backgroundCheck?.status?.replaceAll("_", " ") ?? "not submitted"}
+                      </span>
                       <span className="pill muted">{services || "No services selected"}</span>
                     </div>
+
+                    {backgroundCheck ? (
+                      <div className="request-meta">
+                        <span className="pill muted">Legal name: {backgroundCheck.legal_full_name}</span>
+                        <span className="pill muted">SSN last 4: {backgroundCheck.ssn_last4}</span>
+                        <span className="pill muted">
+                          DL: {backgroundCheck.driver_license_state} {backgroundCheck.driver_license_number}
+                        </span>
+                        <span className="pill muted">
+                          Address: {[
+                            backgroundCheck.legal_address_line1,
+                            backgroundCheck.legal_address_line2,
+                            backgroundCheck.legal_city,
+                            backgroundCheck.legal_state,
+                            backgroundCheck.legal_postal_code,
+                          ].filter(Boolean).join(", ")}
+                        </span>
+                      </div>
+                    ) : (
+                      <p className="dashboard-note">Background check details have not been submitted yet.</p>
+                    )}
 
                     <div className="request-admin-actions">
                       <label className="admin-toggle">
@@ -476,7 +561,7 @@ export function AdminRequestsPanel() {
         </article>
 
         <article className="dashboard-card">
-          <h2>Marketplace jobs</h2>
+          <h2>Live jobs</h2>
           <p className="dashboard-note">Monitor job flow, resolve stuck work, and correct status when field ops need help.</p>
 
           {jobs.length === 0 ? (

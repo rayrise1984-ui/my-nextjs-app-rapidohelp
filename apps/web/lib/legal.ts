@@ -1,5 +1,5 @@
-export const TERMS_VERSION = "2026-04-29";
-export const TERMS_EFFECTIVE_DATE = "April 29, 2026";
+export const TERMS_VERSION = "2026-04-30";
+export const TERMS_EFFECTIVE_DATE = "April 30, 2026";
 
 export const termsSections = [
   {
@@ -13,9 +13,9 @@ export const termsSections = [
       "You must be at least 18 years old and legally able to enter into a contract in the United States. You agree to provide accurate account information and keep your login credentials secure.",
   },
   {
-    title: "Marketplace Role",
+    title: "Platform Role",
     body:
-      "RapidoHelp operates an online marketplace that connects customers seeking help with independent workers. RapidoHelp is not an emergency service, employer, roadside assistance carrier, repair shop, medical provider, transportation company, or insurer.",
+      "RapidoHelp operates an online service platform that connects customers seeking help with independent workers. RapidoHelp is not an emergency service, employer, roadside assistance carrier, repair shop, medical provider, transportation company, or insurer.",
   },
   {
     title: "Emergency and Safety Notice",
@@ -40,7 +40,7 @@ export const termsSections = [
   {
     title: "Cancellations and Disputes",
     body:
-      "Cancellation and refund decisions may depend on job status, worker arrival, work performed, payment status, and applicable law. RapidoHelp may review marketplace activity and may correct job statuses, restrict accounts, pause worker access, or issue refunds or credits where appropriate.",
+      "Cancellation and refund decisions may depend on job status, worker arrival, work performed, payment status, and applicable law. RapidoHelp may review service activity and may correct job statuses, restrict accounts, pause worker access, or issue refunds or credits where appropriate.",
   },
   {
     title: "User Content and Ratings",

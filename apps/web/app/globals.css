@@ -40,6 +40,53 @@ body {
   padding: 1.5rem 0 5rem;
 }
 
+.public-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.public-brand {
+  color: var(--shell-text);
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.login-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.login-links a {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--shell-text);
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+.login-links a.primary {
+  background: #ffffff;
+  color: #111827;
+  border-color: #ffffff;
+}
+
+.login-links a:hover {
+  opacity: 0.9;
+}
+
 .hero {
   min-height: min(720px, calc(100vh - 3rem));
   padding: clamp(1.25rem, 4vw, 3rem);
@@ -248,6 +295,14 @@ body {
   font-size: clamp(2rem, 5vw, 3.5rem);
 }
 
+.auth-panel .eyebrow {
+  color: var(--accent);
+}
+
+.auth-panel .lead {
+  color: var(--muted);
+}
+
 .auth-form {
   display: grid;
   gap: 1rem;
@@ -258,6 +313,20 @@ body {
   display: grid;
   gap: 0.45rem;
   color: var(--muted);
+}
+
+.auth-fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.auth-fieldset legend {
+  padding: 0;
+  color: var(--muted);
+  font: inherit;
 }
 
 .auth-form input {
@@ -659,6 +728,16 @@ body {
   .page-shell {
     width: min(100% - 1rem, 1120px);
     padding: 1rem 0 3rem;
+  }
+
+  .public-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .login-links {
+    justify-content: flex-start;
+    margin-left: 0;
   }
 
   .hero {

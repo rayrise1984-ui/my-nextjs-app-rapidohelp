@@ -28,7 +28,7 @@ export function TermsAcceptanceGate({ children, platform = "web" }: TermsAccepta
 
     if (!client) {
       setLoading(false);
-      setError("Configure Supabase before accepting the Terms.");
+      setError("Live account services are not available yet. Please try again shortly.");
       return;
     }
 

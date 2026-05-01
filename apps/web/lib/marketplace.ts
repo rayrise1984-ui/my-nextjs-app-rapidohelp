@@ -1,4 +1,4 @@
-// Marketplace types for RapidoHelp gig platform
+// Service platform types for RapidoHelp.
 
 export type ServiceType =
   | 'flat_tire'

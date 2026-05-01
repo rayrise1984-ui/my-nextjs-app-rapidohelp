@@ -79,10 +79,12 @@ For Vercel preview deployments, add the preview wildcard shown by Vercel/Supabas
 Supabase Auth email delivery is configured in `supabase/config.toml` for local development.
 Use a root `.env` file for SMTP secrets:
 
-- `SMTP_HOST`
-- `SMTP_USER`
-- `SMTP_PASS`
-- `SMTP_ADMIN_EMAIL`
+- `SMTP_HOST=smtp.office365.com`
+- `SMTP_USER=helpdesk@rapidohelp.com`
+- `SMTP_PASS=your-helpdesk-mailbox-password`
+- `SMTP_ADMIN_EMAIL=helpdesk@rapidohelp.com`
+
+This Office 365 mailbox is the shared SMTP account for all Supabase Auth email delivery in the project, including magic links, passwordless flows, and worker bootstrap mail. Port `587` with STARTTLS is the expected transport.
 
 For production Supabase projects, configure the same SMTP provider in the Supabase Dashboard under Authentication settings or through the Management API. Use a verified sender address for `SMTP_ADMIN_EMAIL`.
 

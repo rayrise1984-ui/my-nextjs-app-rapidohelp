@@ -22,6 +22,9 @@ const migrations = [
   "supabase/migrations/20260427004000_worker_progress_and_matching.sql",
   "supabase/migrations/20260427005000_admin_worker_verification.sql",
   "supabase/migrations/20260429000000_add_terms_acceptance.sql",
+  "supabase/migrations/20260430230843_worker_background_check_details.sql",
+  "supabase/migrations/20260430235959_worker_payout_account_details.sql",
+  "supabase/migrations/20260501000000_seed_profile_metadata_on_signup.sql",
 ].map(read);
 
 const allMigrations = migrations.join("\n\n");
@@ -29,6 +32,7 @@ const allMigrations = migrations.join("\n\n");
 const latestTrustedActions = read(
   "supabase/migrations/20260427002000_trusted_marketplace_actions.sql",
 );
+const demoSeedScript = read("scripts/create-demo-users.cjs");
 const workerProgress = read(
   "supabase/migrations/20260427004000_worker_progress_and_matching.sql",
 );
@@ -38,6 +42,14 @@ const workerVerification = read(
 const termsAcceptance = read(
   "supabase/migrations/20260429000000_add_terms_acceptance.sql",
 );
+const profileBootstrap = [
+  read("supabase/migrations/20260320000000_init.sql"),
+  read("supabase/migrations/20260501000000_seed_profile_metadata_on_signup.sql"),
+].join("\n\n");
+const workerBackgroundCheck = [
+  read("supabase/migrations/20260430230843_worker_background_check_details.sql"),
+  read("supabase/migrations/20260430235959_worker_payout_account_details.sql"),
+].join("\n\n");
 
 const expectSql = (sql, pattern, message) => {
   assert.match(sql.replace(/\s+/g, " "), pattern, message);
@@ -66,9 +78,36 @@ describe("Supabase auth and SMTP configuration", () => {
   });
 });
 
+describe("Supabase profile bootstrap", () => {
+  it("creates a profile row from auth metadata on signup", () => {
+    assert.match(profileBootstrap, /create or replace function public\.handle_new_user\(\)/);
+    assert.match(profileBootstrap, /insert into public\.profiles \(id, full_name, role, is_worker\)/);
+    assert.match(profileBootstrap, /new\.raw_user_meta_data ->> 'full_name'/);
+    assert.match(profileBootstrap, /new\.raw_user_meta_data ->> 'role'/);
+    assert.match(profileBootstrap, /new\.raw_user_meta_data ->> 'is_worker'/);
+  });
+});
+
+describe("Demo worker SMTP bootstrap", () => {
+  it("prefers SMTP mailbox credentials for the worker seed and avoids logging the secret", () => {
+    assert.match(
+      demoSeedScript,
+      /process\.env\.SMTP_USER \|\| process\.env\.DEV_WORKER_EMAIL \|\| 'helpdesk@rapidohelp\.com'/,
+    );
+    assert.match(
+      demoSeedScript,
+      /process\.env\.SMTP_PASS \|\| process\.env\.DEV_WORKER_PASSWORD \|\| DEMO_PASSWORD/,
+    );
+    assert.match(demoSeedScript, /loadEnvFile\(path\.join\(__dirname, '\.\.', '\.env'\)\)/);
+    assert.match(demoSeedScript, /loadEnvFile\(path\.join\(__dirname, '\.\.', '\.env\.local'\)\)/);
+    assert.match(demoSeedScript, /password from \$\{passwordSource\}/);
+    assert.doesNotMatch(demoSeedScript, /ready:[^`]*:\$\{DEMO_PASSWORD\}/);
+  });
+});
+
 describe("Supabase marketplace schema contracts", () => {
   it("creates and protects the core marketplace tables", () => {
-    for (const table of ["profiles", "jobs", "job_assignments", "worker_ratings"]) {
+    for (const table of ["profiles", "jobs", "job_assignments", "worker_ratings", "worker_background_checks"]) {
       assert.match(allMigrations, new RegExp(`(?:create table|alter table) (?:if not exists )?public?\\.?${table}|alter table ${table}`, "i"));
       assert.match(allMigrations, new RegExp(`alter table (?:public\\.)?${table} enable row level security`, "i"));
     }
@@ -113,7 +152,7 @@ describe("Supabase trusted marketplace actions", () => {
   });
 
   it("prevents customers from mutating protected profile fields", () => {
-    expectSql(termsAcceptance, /create or replace function public\.protect_profile_sensitive_fields\(\).*not public\.has_staff_access/, "profile protection trigger should check staff access");
+    expectSql(workerBackgroundCheck, /create or replace function public\.protect_profile_sensitive_fields\(\).*not public\.has_staff_access/, "profile protection trigger should check staff access");
     for (const field of [
       "role",
       "is_worker",
@@ -126,9 +165,38 @@ describe("Supabase trusted marketplace actions", () => {
       "terms_version",
       "terms_acceptance_method",
       "terms_accepted_platform",
+      "worker_profile_completed",
     ]) {
-      assert.match(termsAcceptance, new RegExp(`new\\.${field} = old\\.${field}`));
+      assert.match(workerBackgroundCheck, new RegExp(`new\\.${field} = old\\.${field}`));
     }
+  });
+
+  it("keeps worker background check details private and submitted through an RPC", () => {
+    assert.match(workerBackgroundCheck, /create table if not exists public\.worker_background_checks/);
+    assert.match(workerBackgroundCheck, /ssn_last4 ~ '\^\[0-9\]\{4\}\$'/);
+    assert.match(workerBackgroundCheck, /alter table public\.worker_background_checks enable row level security/);
+    assert.match(workerBackgroundCheck, /Workers can read their own background check/);
+    assert.match(workerBackgroundCheck, /Staff can read worker background checks/);
+    for (const field of [
+      "payout_account_holder_name",
+      "payout_bank_name",
+      "payout_account_type",
+      "payout_account_last4",
+      "payout_routing_last4",
+    ]) {
+      assert.match(workerBackgroundCheck, new RegExp(`add column if not exists ${field}`));
+    }
+    assert.match(workerBackgroundCheck, /worker_background_checks_payout_account_type_check/);
+    assert.match(workerBackgroundCheck, /worker_background_checks_payout_account_last4_check/);
+    assert.match(workerBackgroundCheck, /worker_background_checks_payout_routing_last4_check/);
+    assert.match(workerBackgroundCheck, /sync_worker_profile_completion_from_background_check/);
+    assert.match(workerBackgroundCheck, /worker_profile_completed = worker_complete/);
+    assert.match(workerBackgroundCheck, /is_worker_user\(check_user_id uuid default auth\.uid\(\)\)/);
+    assert.match(workerBackgroundCheck, /worker_profile_completed = true/);
+    assert.match(workerBackgroundCheck, /drop function if exists public\.submit_worker_profile\(public\.worker_status, text, integer, public\.service_type\[\], text, text, text, text, text, text, text, text, text\)/);
+    assert.match(workerBackgroundCheck, /create or replace function public\.submit_worker_profile/);
+    assert.match(workerBackgroundCheck, /set_config\('app\.submitting_worker_profile', 'true', true\)/);
+    assert.match(workerBackgroundCheck, /insert into public\.worker_background_checks/);
   });
 
   it("records terms acceptance with server-side timestamp and version", () => {
@@ -194,9 +262,10 @@ describe("Supabase trusted marketplace actions", () => {
       "cancel_job\\(uuid\\)",
       "staff_update_worker_access\\(uuid, boolean, boolean\\)",
       "accept_terms\\(text, text\\)",
+      "submit_worker_profile\\(public\\.worker_status, text, integer, public\\.service_type\\[\\], text, text, text, text, text, text, text, text, text, text, text, text, text, text\\)",
     ]) {
-      assert.match(allMigrations, new RegExp(`revoke all on function public\\.${signature} from public`));
-      assert.match(allMigrations, new RegExp(`grant execute on function public\\.${signature} to authenticated`));
+      expectSql(allMigrations, new RegExp(`revoke all on function public\\.${signature} from public`));
+      expectSql(allMigrations, new RegExp(`grant execute on function public\\.${signature} to authenticated`));
     }
   });
 });

@@ -1,5 +1,6 @@
 import { hasSupabaseBrowserConfig } from "@/lib/supabase";
 import { bookableServiceTypes, type ServiceType } from "@/lib/marketplace";
+import { LoginLinks } from "@/components/login-links";
 import Link from "next/link";
 
 const serviceCards = [
@@ -97,6 +98,13 @@ export default function HomePage() {
 
   return (
     <main className="page-shell">
+      <header className="public-topbar">
+        <Link className="public-brand" href="/">
+          RapidoHelp
+        </Link>
+        <LoginLinks />
+      </header>
+
       <section className="hero">
         <div className="hero-content">
           <p className="eyebrow">Happy to help, anytime, anywhere, always</p>
@@ -107,28 +115,22 @@ export default function HomePage() {
           <div className="status-row">
             <span className={supabaseConfigured ? "status ok" : "status warn"}>
               {supabaseConfigured
-                ? "Marketplace ready"
-                : "Configure Supabase to get started"}
+                ? "Create a profile to get started"
+                : "Create a profile to get started"}
             </span>
             {supabaseConfigured && (
               <>
                 <Link className="cta-link" href="/dashboard">
                   Book help now
                 </Link>
-                <Link className="cta-link secondary" href="/auth">
-                  Book with phone
-                </Link>
-                <Link className="cta-link secondary" href="/worker">
-                  Become a helper
-                </Link>
-                <Link className="cta-link secondary" href="/admin">
-                  Admin
+                <Link className="cta-link" href="/auth">
+                  Sign up
                 </Link>
               </>
             )}
             {!supabaseConfigured && (
               <Link className="cta-link" href="/auth">
-                Configure and sign in
+                Sign up
               </Link>
             )}
           </div>
@@ -144,8 +146,8 @@ export default function HomePage() {
             <span>Post moving, handyman, cleaning, delivery, tech, or pet help.</span>
           </Link>
           <Link href="/auth">
-            <strong>Use phone login</strong>
-            <span>Sign in with an SMS code before booking.</span>
+            <strong>Sign up</strong>
+            <span>Start a customer or helper account before you sign in.</span>
           </Link>
         </div>
       </section>

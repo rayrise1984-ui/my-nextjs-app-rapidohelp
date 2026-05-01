@@ -133,7 +133,7 @@ export function DashboardPanel() {
 
       setServiceType("handyman_help");
       setMessage(
-        `${serviceTypeLabels[requestedService as ServiceType]} needs the latest Supabase migration before booking. Showing Handyman Help for now.`,
+        `${serviceTypeLabels[requestedService as ServiceType]} needs the latest live service update before booking. Showing Handyman Help for now.`,
       );
     }
   }, [searchParams]);
@@ -143,7 +143,7 @@ export function DashboardPanel() {
 
     if (!client) {
       setLoading(false);
-      setError("Configure Supabase to get started.");
+      setError("Live booking services are not available yet. Please try again shortly.");
       return;
     }
 
@@ -262,7 +262,7 @@ export function DashboardPanel() {
     }
 
     if (!isBookableServiceType(serviceType)) {
-      setError(`${serviceTypeLabels[serviceType]} is not enabled in Supabase yet. Please choose another service.`);
+      setError(`${serviceTypeLabels[serviceType]} is not enabled for live booking yet. Please choose another service.`);
       return;
     }
 

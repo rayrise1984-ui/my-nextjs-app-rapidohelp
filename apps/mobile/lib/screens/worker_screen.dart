@@ -5,6 +5,31 @@ import '../core/service_visuals.dart';
 import '../models/support_models.dart';
 import 'worker_profile_setup_screen.dart';
 
+bool _isFilledValue(Object? value) => value != null && value.toString().trim().isNotEmpty;
+
+bool _isTwoLetterStateCode(Object? value) {
+  return RegExp(r'^[A-Z]{2}$').hasMatch(value?.toString().trim().toUpperCase() ?? '');
+}
+
+bool isCompleteWorkerBackgroundCheck(Map<String, dynamic>? row) {
+  if (row == null) return false;
+
+  return _isFilledValue(row['submitted_at']) &&
+      _isFilledValue(row['legal_full_name']) &&
+      RegExp(r'^\d{4}$').hasMatch((row['ssn_last4'] as String? ?? '').trim()) &&
+      _isFilledValue(row['driver_license_number']) &&
+      _isTwoLetterStateCode(row['driver_license_state']) &&
+      _isFilledValue(row['legal_address_line1']) &&
+      _isFilledValue(row['legal_city']) &&
+      _isTwoLetterStateCode(row['legal_state']) &&
+      _isFilledValue(row['legal_postal_code']) &&
+      _isFilledValue(row['payout_account_holder_name']) &&
+      _isFilledValue(row['payout_bank_name']) &&
+      ['checking', 'savings'].contains((row['payout_account_type'] as String? ?? '').trim().toLowerCase()) &&
+      RegExp(r'^\d{4}$').hasMatch((row['payout_account_last4'] as String? ?? '').trim()) &&
+      RegExp(r'^\d{4}$').hasMatch((row['payout_routing_last4'] as String? ?? '').trim());
+}
+
 class WorkerScreen extends StatefulWidget {
   const WorkerScreen({super.key});
 
@@ -18,6 +43,7 @@ class _WorkerScreenState extends State<WorkerScreen> {
   List<Job> _pendingJobs = [];
   List<Job> _acceptedJobs = [];
   List<Job> _completedJobs = [];
+  List<Job> _workHistoryJobs = [];
   List<String> _workerServiceTypes = [];
   Map<String, String> _finalPriceInputs = {};
   bool _loading = true;
@@ -31,6 +57,7 @@ class _WorkerScreenState extends State<WorkerScreen> {
   String _workerStatus = 'offline';
   bool _workerVerified = false;
   bool _workerDisabled = false;
+  double _totalEarnings = 0;
   RealtimeChannel? _channel;
   RealtimeChannel? _profileChannel;
 
@@ -54,7 +81,7 @@ class _WorkerScreenState extends State<WorkerScreen> {
     }
     final row = await Supabase.instance.client
         .from('profiles')
-        .select('worker_status, worker_work_details, worker_experience_years, worker_profile_completed, service_types')
+        .select('worker_status, worker_work_details, worker_experience_years, worker_profile_completed, service_types, total_earnings')
         .eq('id', userId)
         .maybeSingle();
     final status = row?['worker_status'] as String?;
@@ -62,6 +89,15 @@ class _WorkerScreenState extends State<WorkerScreen> {
     final exp = row?['worker_experience_years'] as int?;
     final completedFlag = (row?['worker_profile_completed'] as bool?) ?? false;
     final services = List<String>.from((row?['service_types'] as List?) ?? const []);
+    final totalEarnings = (row?['total_earnings'] as num?)?.toDouble() ?? 0;
+    final backgroundRow = await Supabase.instance.client
+        .from('worker_background_checks')
+        .select(
+          'submitted_at, legal_full_name, ssn_last4, driver_license_number, driver_license_state, legal_address_line1, legal_address_line2, legal_city, legal_state, legal_postal_code, payout_account_holder_name, payout_bank_name, payout_account_type, payout_account_last4, payout_routing_last4',
+        )
+        .eq('worker_id', userId)
+        .maybeSingle();
+    final backgroundComplete = isCompleteWorkerBackgroundCheck(backgroundRow);
     final complete = completedFlag &&
         status != null &&
         status.isNotEmpty &&
@@ -69,7 +105,8 @@ class _WorkerScreenState extends State<WorkerScreen> {
         workDetails.trim().isNotEmpty &&
         exp != null &&
         exp >= 0 &&
-        services.isNotEmpty;
+        services.isNotEmpty &&
+        backgroundComplete;
     if (!complete && mounted) {
       final result = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
@@ -152,12 +189,19 @@ class _WorkerScreenState extends State<WorkerScreen> {
           .eq('status', 'completed')
           .order('completed_at', ascending: false);
 
+      final historyRows = await client
+          .from('jobs')
+          .select()
+          .eq('worker_id', userId)
+          .order('created_at', ascending: false);
+
       if (!mounted) return;
 
       setState(() {
         _workerStatus = (profile?['worker_status'] as String?) ?? 'offline';
         _workerVerified = (profile?['worker_verified'] as bool?) ?? false;
         _workerDisabled = (profile?['worker_disabled'] as bool?) ?? false;
+        _totalEarnings = totalEarnings;
         _workerServiceTypes = serviceTypes;
         _pendingJobs = (pendingRows as List)
             .map((entry) => Job.fromJson(entry as Map<String, dynamic>))
@@ -165,6 +209,9 @@ class _WorkerScreenState extends State<WorkerScreen> {
             .toList();
         _acceptedJobs = acceptedJobs;
         _completedJobs = (completedRows as List)
+            .map((entry) => Job.fromJson(entry as Map<String, dynamic>))
+            .toList();
+        _workHistoryJobs = (historyRows as List)
             .map((entry) => Job.fromJson(entry as Map<String, dynamic>))
             .toList();
         _finalPriceInputs = {
@@ -197,6 +244,9 @@ class _WorkerScreenState extends State<WorkerScreen> {
             if (!_workerServiceTypes.contains(next.serviceType)) return;
             setState(() {
               _pendingJobs = [next, ..._pendingJobs.where((job) => job.id != next.id)];
+              if (next.workerId == userId) {
+                _workHistoryJobs = [next, ..._workHistoryJobs.where((job) => job.id != next.id)];
+              }
             });
           },
         )
@@ -208,6 +258,11 @@ class _WorkerScreenState extends State<WorkerScreen> {
             final updated = Job.fromJson(payload.newRecord);
             setState(() {
               _pendingJobs = _pendingJobs.where((job) => job.id != updated.id).toList();
+              if (updated.workerId == userId) {
+                _workHistoryJobs = [updated, ..._workHistoryJobs.where((job) => job.id != updated.id)];
+              } else {
+                _workHistoryJobs = _workHistoryJobs.where((job) => job.id != updated.id).toList();
+              }
               if (updated.workerId == userId &&
                   (updated.status == 'accepted' || updated.status == 'in_progress')) {
                 _acceptedJobs = [updated, ..._acceptedJobs.where((job) => job.id != updated.id)];
@@ -324,6 +379,7 @@ class _WorkerScreenState extends State<WorkerScreen> {
       setState(() {
         _pendingJobs = _pendingJobs.where((job) => job.id != jobId).toList();
         _acceptedJobs = [acceptedJob, ..._acceptedJobs.where((job) => job.id != jobId)];
+        _workHistoryJobs = [acceptedJob, ..._workHistoryJobs.where((job) => job.id != acceptedJob.id)];
         _finalPriceInputs[jobId] =
             (acceptedJob.finalPrice ?? acceptedJob.estimatedPrice ?? 0).toStringAsFixed(2);
         _workerStatus = 'on_job';
@@ -358,6 +414,7 @@ class _WorkerScreenState extends State<WorkerScreen> {
       final activeJob = Job.fromJson(jsonObjectFromRpc(updated));
       setState(() {
         _acceptedJobs = [activeJob, ..._acceptedJobs.where((job) => job.id != jobId)];
+        _workHistoryJobs = [activeJob, ..._workHistoryJobs.where((job) => job.id != activeJob.id)];
         _workerStatus = 'on_job';
         _message = 'Job marked in progress.';
       });
@@ -381,14 +438,16 @@ class _WorkerScreenState extends State<WorkerScreen> {
     });
 
     try {
-      await Supabase.instance.client.rpc(
+      final updated = await Supabase.instance.client.rpc(
         'cancel_worker_job',
         params: {'p_job_id': jobId},
       );
 
       if (!mounted) return;
+      final cancelledJob = Job.fromJson(jsonObjectFromRpc(updated));
       setState(() {
         _acceptedJobs = _acceptedJobs.where((job) => job.id != jobId).toList();
+        _workHistoryJobs = [cancelledJob, ..._workHistoryJobs.where((job) => job.id != cancelledJob.id)];
         _finalPriceInputs.remove(jobId);
         _workerStatus = 'online';
         _message = 'Job cancelled.';
@@ -437,6 +496,7 @@ class _WorkerScreenState extends State<WorkerScreen> {
       setState(() {
         _acceptedJobs = _acceptedJobs.where((job) => job.id != jobId).toList();
         _completedJobs = [completedJob, ..._completedJobs.where((job) => job.id != jobId)];
+        _workHistoryJobs = [completedJob, ..._workHistoryJobs.where((job) => job.id != completedJob.id)];
         _finalPriceInputs.remove(jobId);
         _workerStatus = 'online';
         _message = 'Job completed. Waybill is available from the worker web dashboard.';
@@ -463,6 +523,8 @@ class _WorkerScreenState extends State<WorkerScreen> {
         return const Color(0xFFF77F00);
       case 'completed':
         return const Color(0xFF2E7D32);
+      case 'cancelled_by_worker':
+        return const Color(0xFF8A1C0F);
       default:
         return Colors.grey;
     }
@@ -478,12 +540,11 @@ class _WorkerScreenState extends State<WorkerScreen> {
         body: Center(child: Text('Worker profile setup required.')), // fallback
       );
     }
-    final paidEarnings = _completedJobs
-        .where((job) => job.paymentStatus == 'paid')
-        .fold<double>(0, (sum, job) => sum + (job.workerPayoutAmount ?? 0));
+    final totalEarnings = _totalEarnings;
     final pendingPayout = _completedJobs
         .where((job) => job.paymentStatus != 'paid')
         .fold<double>(0, (sum, job) => sum + (job.effectiveWorkerPayoutAmount ?? 0));
+    final workHistoryJobs = _workHistoryJobs;
     final serviceSummary = _workerServiceTypes
         .map((type) => serviceVisualFor(type).label)
         .join(', ');
@@ -491,7 +552,7 @@ class _WorkerScreenState extends State<WorkerScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Worker Jobs'),
+        title: const Text('Worker Profile'),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
@@ -577,9 +638,90 @@ class _WorkerScreenState extends State<WorkerScreen> {
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 8),
-                        Text('Paid earnings: \$${paidEarnings.toStringAsFixed(2)}'),
+                        Text('Total earnings: \$${totalEarnings.toStringAsFixed(2)}'),
                         Text('Pending payout: \$${pendingPayout.toStringAsFixed(2)}'),
                         Text('Completed jobs: ${_completedJobs.length}'),
+                        Text('Work history items: ${workHistoryJobs.length}'),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Work history',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        if (workHistoryJobs.isEmpty)
+                          const Text('No work history yet.')
+                        else
+                          ...workHistoryJobs.map((job) {
+                            final visual = serviceVisualFor(job.serviceType);
+                            final double payoutAmount =
+                                job.workerPayoutAmount ?? job.effectiveWorkerPayoutAmount ?? 0.0;
+                            final payoutLabel = job.status == 'completed'
+                                ? job.paymentStatus == 'paid'
+                                    ? 'Earned \$${payoutAmount.toStringAsFixed(2)}'
+                                    : 'Pending payout \$${payoutAmount.toStringAsFixed(2)}'
+                                : job.status == 'cancelled_by_worker'
+                                    ? 'No payout'
+                                    : payoutAmount > 0
+                                        ? 'Potential payout \$${payoutAmount.toStringAsFixed(2)}'
+                                        : 'Payout pending';
+                            final timestamp = job.completedAt ?? job.acceptedAt ?? job.createdAt;
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: const Color(0xFFD9DEE8)),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(child: Text(visual.label, style: const TextStyle(fontWeight: FontWeight.w600))),
+                                        Chip(
+                                          label: Text(job.status.replaceAll('_', ' ')),
+                                          backgroundColor: _statusColor(job.status),
+                                          labelStyle: const TextStyle(color: Colors.white),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(job.description),
+                                    if (job.locationName != null) ...[
+                                      const SizedBox(height: 4),
+                                      Text('Location: ${job.locationName}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                    ],
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${job.status == 'completed' ? 'Completed' : job.status == 'in_progress' ? 'In progress' : job.status == 'accepted' ? 'Accepted' : 'Cancelled'} ${timestamp.toLocal()}',
+                                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      payoutLabel,
+                                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Payment: ${job.paymentStatus.replaceAll('_', ' ')}',
+                                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }),
                       ],
                     ),
                   ),

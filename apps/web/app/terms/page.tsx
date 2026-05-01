@@ -12,7 +12,7 @@ export default function TermsPage() {
         <p>
           These Terms of Service are a binding agreement between you and RapidoHelp. By creating an account, signing in,
           posting a job, accepting a job, using the website, using the mobile app, or clicking "I agree," you agree to
-          these Terms and to our marketplace rules.
+          these Terms and to our service rules.
         </p>
         {termsSections.map((section) => (
           <section key={section.title}>

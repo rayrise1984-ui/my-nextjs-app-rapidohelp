@@ -56,9 +56,13 @@ Visit: `http://localhost:3000`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` – Anon JWT
 - `SUPABASE_SERVICE_ROLE_KEY` – Service role (for backend)
 - `SMTP_HOST` – SMTP host for Supabase Auth email delivery, `smtp.office365.com`
-- `SMTP_USER` – SMTP username, `helpdesk@rapidohelp.com`
-- `SMTP_PASS` – the `helpdesk@rapidohelp.com` mailbox password
+- `SMTP_USER` – SMTP username and helpdesk worker login, `helpdesk@rapidohelp.com`
+- `SMTP_PASS` – the `helpdesk@rapidohelp.com` mailbox password and worker quick-start password
 - `SMTP_ADMIN_EMAIL` – sender address, `helpdesk@rapidohelp.com`
+- `DEV_WORKER_EMAIL` – fallback worker demo login if you are not using the SMTP mailbox
+- `DEV_WORKER_PASSWORD` – fallback worker demo password if you are not using the SMTP mailbox
+
+The mobile worker quick start and the demo seeding script prefer `SMTP_USER`/`SMTP_PASS` when they are present, then fall back to `DEV_WORKER_*`.
 
 The Supabase SMTP port is `587` in `supabase/config.toml`; Microsoft 365 uses STARTTLS on that port.
 
@@ -82,8 +86,14 @@ For local email inspection without an external SMTP provider, Supabase Inbucket 
 ```bash
 cd apps/mobile
 flutter pub get
-flutter run
+flutter run \
+  --dart-define=SUPABASE_URL=... \
+  --dart-define=SUPABASE_ANON_KEY=... \
+  --dart-define=SMTP_USER=helpdesk@rapidohelp.com \
+  --dart-define=SMTP_PASS=your-helpdesk-mailbox-password
 ```
+
+Add `--dart-define=DEV_CUSTOMER_EMAIL=...` and `--dart-define=DEV_CUSTOMER_PASSWORD=...` if you want the customer quick start too. If you are not using the SMTP mailbox for the worker flow, pass `DEV_WORKER_EMAIL` and `DEV_WORKER_PASSWORD` instead.
 
 ## Automated Tests
 
