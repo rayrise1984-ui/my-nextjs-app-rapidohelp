@@ -174,6 +174,19 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
     return '${diff.inDays}d ago';
   }
 
+  String _bookingPaymentLabel(String? method) {
+    switch (method) {
+      case 'card':
+        return 'Pay by Card';
+      case 'upi':
+        return 'Pay by UPI';
+      case 'cash':
+        return 'Pay with Cash';
+      default:
+        return 'Payment preference pending';
+    }
+  }
+
   Future<void> _markPaymentPaid(String method) async {
     if (_job.paymentStatus == 'paid') {
       return;
@@ -346,6 +359,18 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                 children: [
                   Text(_job.description),
                   const SizedBox(height: 8),
+                  if (_job.serviceAddress != null)
+                    Text(
+                      'Address: ${_job.serviceAddress}',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.grey),
+                    ),
+                  if (_job.scheduledFor != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'When: ${_job.scheduledFor!.toLocal()}',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.grey),
+                    ),
+                  ],
                   if (_job.locationName != null)
                     Text(
                       'Location: ${_job.locationName}',
@@ -402,6 +427,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                     const Text('Job cancelled', style: TextStyle(color: Colors.grey))
                   else
                     Text(_job.status),
+                  if (_job.preferredWorkerId != null) ...[
+                    const SizedBox(height: 8),
+                    const Text('Preferred partner requested', style: TextStyle(color: Color(0xFF0057FF))),
+                  ],
                   if (_job.status == 'pending') ...[
                     const SizedBox(height: 12),
                     OutlinedButton(
@@ -473,6 +502,13 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                       style: const TextStyle(fontSize: 13, color: Colors.grey),
                     ),
                   ],
+                  if (_job.bookingPaymentMethod != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Booking preference: ${_bookingPaymentLabel(_job.bookingPaymentMethod)}',
+                      style: const TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                  ],
                   if (_job.status == 'cancelled') ...[
                     const SizedBox(height: 8),
                     const Text(
@@ -508,6 +544,10 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                         OutlinedButton(
                           onPressed: _paying ? null : () => _markPaymentPaid('upi'),
                           child: const Text('Mark Paid by UPI'),
+                        ),
+                        OutlinedButton(
+                          onPressed: _paying ? null : () => _markPaymentPaid('cash'),
+                          child: const Text('Mark Paid Cash'),
                         ),
                       ],
                     ),

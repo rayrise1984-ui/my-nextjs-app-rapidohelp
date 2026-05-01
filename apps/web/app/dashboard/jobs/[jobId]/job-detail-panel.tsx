@@ -6,6 +6,7 @@ import type { Session } from "@supabase/supabase-js";
 
 import { JobRatingPanel } from "@/components/job-rating-panel";
 import {
+  bookingPaymentMethodLabels,
   jobStatusLabels,
   paymentStatusLabels,
   serviceTypeLabels,
@@ -52,6 +53,12 @@ const workerStatusLabel = (status: WorkerSummary["workerStatus"]): string => {
   if (status === "online") return "online";
   if (status === "on_job") return "on job";
   return "offline";
+};
+
+const formatScheduledFor = (value?: string | null): string => {
+  if (!value) return "Schedule pending";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 };
 
 export function JobDetailPanel({ jobId }: JobDetailPanelProps) {
@@ -172,7 +179,7 @@ export function JobDetailPanel({ jobId }: JobDetailPanelProps) {
     };
   }, [job?.worker_id, session]);
 
-  const markPaid = async (method: "card" | "upi") => {
+  const markPaid = async (method: "card" | "upi" | "cash") => {
     const client = createSupabaseBrowserClient();
     if (!client || !job) return;
 
@@ -246,12 +253,18 @@ export function JobDetailPanel({ jobId }: JobDetailPanelProps) {
 
         <div className="request-meta">
           <span className="pill muted">{job.location_name ?? "Location pending"}</span>
+          <span className="pill muted">{job.service_address ?? "Address pending"}</span>
+          <span className="pill muted">{formatScheduledFor(job.scheduled_for)}</span>
           <span className="pill muted">{paymentStatusLabels[job.payment_status]}</span>
+          <span className="pill muted">
+            {job.booking_payment_method ? bookingPaymentMethodLabels[job.booking_payment_method] : "Payment preference pending"}
+          </span>
           <span className="pill muted">{new Date(job.created_at).toLocaleString()}</span>
         </div>
 
         <div className="request-item" style={{ marginTop: "16px" }}>
           <p>Customer: {job.user_id}</p>
+          {job.preferred_worker_id ? <p>Preferred partner requested</p> : null}
           {amount ? <p>Amount: ${amount.toFixed(2)}</p> : null}
           {job.payment_reference ? <p>Payment reference: {job.payment_reference}</p> : null}
         </div>
@@ -299,6 +312,9 @@ export function JobDetailPanel({ jobId }: JobDetailPanelProps) {
             </button>
             <button disabled={paying} onClick={() => void markPaid("upi")} type="button">
               Mark paid by UPI
+            </button>
+            <button disabled={paying} onClick={() => void markPaid("cash")} type="button">
+              Mark paid cash
             </button>
           </div>
         ) : null}

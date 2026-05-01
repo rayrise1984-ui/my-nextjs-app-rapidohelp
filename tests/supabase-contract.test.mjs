@@ -26,6 +26,7 @@ const migrations = [
   "supabase/migrations/20260430235959_worker_payout_account_details.sql",
   "supabase/migrations/20260501000000_seed_profile_metadata_on_signup.sql",
   "supabase/migrations/20260502000000_helper_background_check_consent.sql",
+  "supabase/migrations/20260501163923_urbanclap_booking_spine.sql",
 ].map(read);
 
 const allMigrations = migrations.join("\n\n");
@@ -61,6 +62,13 @@ const workerBackgroundCheck = [
   read("supabase/migrations/20260430235959_worker_payout_account_details.sql"),
   read("supabase/migrations/20260502000000_helper_background_check_consent.sql"),
 ].join("\n\n");
+const urbanclapBookingSpine = read("supabase/migrations/20260501163923_urbanclap_booking_spine.sql");
+const webDashboardPanel = read("apps/web/app/dashboard/_components/dashboard-panel.tsx");
+const webJobDetailPanel = read("apps/web/app/dashboard/jobs/[jobId]/job-detail-panel.tsx");
+const webWorkerPanel = read("apps/web/app/worker/_components/worker-panel.tsx");
+const mobileDashboardScreen = read("apps/mobile/lib/screens/dashboard_screen.dart");
+const mobileJobDetailScreen = read("apps/mobile/lib/screens/job_detail_screen.dart");
+const mobileWorkerScreen = read("apps/mobile/lib/screens/worker_screen.dart");
 
 const expectSql = (sql, pattern, message) => {
   assert.match(sql.replace(/\s+/g, " "), pattern, message);
@@ -163,6 +171,85 @@ describe("Supabase marketplace schema contracts", () => {
       assert.match(webCatalog, new RegExp(`['"]${serviceType}['"]`));
       assert.match(mobileCatalog, new RegExp(`['"]${serviceType}['"]`));
       assert.match(allMigrations, new RegExp(`['"]${serviceType}['"]`));
+    }
+  });
+});
+
+describe("UrbanClap booking spine", () => {
+  it("stores the booking address, schedule, preferred partner, and payment choice on each job", () => {
+    assert.match(urbanclapBookingSpine, /add column if not exists service_address text/);
+    assert.match(urbanclapBookingSpine, /add column if not exists scheduled_for timestamptz/);
+    assert.match(urbanclapBookingSpine, /add column if not exists preferred_worker_id uuid references auth\.users\(id\) on delete set null/);
+    assert.match(urbanclapBookingSpine, /add column if not exists booking_payment_method text/);
+    assert.match(urbanclapBookingSpine, /jobs_booking_payment_method_check/);
+    assert.match(urbanclapBookingSpine, /jobs_scheduled_for/);
+    assert.match(urbanclapBookingSpine, /jobs_preferred_worker_id/);
+    assert.match(urbanclapBookingSpine, /create or replace function public\.offer_preferred_worker_for_job\(\)/);
+    assert.match(urbanclapBookingSpine, /Service address is required/);
+    assert.match(urbanclapBookingSpine, /Scheduled time is required/);
+    assert.match(urbanclapBookingSpine, /Booking payment method is required/);
+    assert.match(urbanclapBookingSpine, /Preferred service partner is not available/);
+    assert.match(urbanclapBookingSpine, /Preferred service partner does not support this service/);
+    assert.match(urbanclapBookingSpine, /insert into public\.job_assignments \(job_id, worker_id, status, offered_at\)/);
+  });
+
+  it("surfaces the booking spine in the customer and worker web flows", () => {
+    for (const phrase of [
+      "Preferred service partner",
+      "Service address",
+      "Schedule your service",
+      "Booking payment preference",
+      "Mark paid cash",
+    ]) {
+      assert.match(webDashboardPanel, new RegExp(phrase));
+    }
+
+    for (const phrase of [
+      "Offered to you",
+      "Preferred for you",
+      "Address:",
+      "When:",
+      "Payment:",
+    ]) {
+      assert.match(webWorkerPanel, new RegExp(phrase));
+    }
+
+    for (const phrase of [
+      "service_address",
+      "booking_payment_method",
+      "Mark paid cash",
+      "Preferred partner requested",
+    ]) {
+      assert.match(webJobDetailPanel, new RegExp(phrase));
+    }
+
+    for (const phrase of [
+      "Service address",
+      "Schedule your service",
+      "Booking payment preference",
+      "booking_payment_method",
+      "Address:",
+      "When:",
+    ]) {
+      assert.match(mobileDashboardScreen, new RegExp(phrase));
+    }
+
+    for (const phrase of [
+      "serviceAddress",
+      "scheduledFor",
+      "bookingPaymentMethod",
+      "Mark Paid Cash",
+    ]) {
+      assert.match(mobileJobDetailScreen, new RegExp(phrase));
+    }
+
+    for (const phrase of [
+      "Offered to you",
+      "Address:",
+      "When:",
+      "Payment:",
+    ]) {
+      assert.match(mobileWorkerScreen, new RegExp(phrase));
     }
   });
 });

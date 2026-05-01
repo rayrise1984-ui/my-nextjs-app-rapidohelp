@@ -9,6 +9,7 @@ import {
   addJob,
   bookableServiceTypes,
   calculatePayoutSplit,
+  bookingPaymentMethodLabels,
   paymentStatusLabels,
   serviceTypeLabels,
   jobStatusLabels,
@@ -127,6 +128,12 @@ const backgroundCheckInputsFromRecord = (
 });
 
 const money = (amount: number | null | undefined) => `$${Number(amount ?? 0).toFixed(2)}`;
+
+const formatScheduledFor = (value?: string | null): string => {
+  if (!value) return "Schedule pending";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+};
 
 const escapeHtml = (value: string) =>
   value
@@ -1305,8 +1312,15 @@ export function WorkerPanel() {
   const availableServiceTypes = workerProfile?.service_types ?? [];
   const totalEarnings = Number(workerProfile?.total_earnings ?? 0);
   const historyJobCount = workerHistoryJobs.length;
+  const offeredPendingJobs = workerCanAcceptNewJobs
+    ? pendingJobs.filter((job) => {
+        if (!jobMatchesWorkerServices(job, workerProfile)) return false;
+        return job.preferred_worker_id === session.user.id;
+      })
+    : [];
   const visiblePendingJobs = workerCanAcceptNewJobs
     ? pendingJobs.filter((job) => {
+        if (job.preferred_worker_id === session.user.id) return false;
         if (!jobMatchesWorkerServices(job, workerProfile)) return false;
         return feedServiceFilter === "all" || job.service_type === feedServiceFilter;
       })
@@ -1441,6 +1455,62 @@ export function WorkerPanel() {
       {error && <div style={{ color: "#8A1C0F", padding: "12px", backgroundColor: "#f5f5f5", borderRadius: "4px", marginBottom: "16px" }}>{error}</div>}
       {message && <div style={{ color: "#1B5E20", padding: "12px", backgroundColor: "#f5f5f5", borderRadius: "4px", marginBottom: "16px" }}>{message}</div>}
 
+      {offeredPendingJobs.length > 0 && (
+        <div style={{ marginBottom: "32px" }}>
+          <h2 style={{ marginBottom: "12px" }}>Offered to you ({offeredPendingJobs.length})</h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {offeredPendingJobs.map((job) => (
+              <div key={job.id} style={{ padding: "16px", border: "2px solid #0057FF", borderRadius: "8px", backgroundColor: "#f0f7ff" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+                  <h3 style={{ margin: "0", fontSize: "16px" }}>{serviceTypeLabels[job.service_type]}</h3>
+                  <span
+                    style={{
+                      padding: "4px 12px",
+                      backgroundColor: "#0057FF",
+                      color: "white",
+                      borderRadius: "12px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Preferred for you
+                  </span>
+                </div>
+                <p style={{ margin: "0 0 8px 0", color: "#333" }}>{job.description}</p>
+                <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#666" }}>
+                  Address: {job.service_address ?? job.location_name ?? "Location pending"}
+                </p>
+                <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#666" }}>
+                  When: {formatScheduledFor(job.scheduled_for)}
+                </p>
+                <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#666" }}>
+                  Payment: {job.booking_payment_method ? bookingPaymentMethodLabels[job.booking_payment_method] : "Payment preference pending"}
+                </p>
+                <p style={{ margin: "0 0 12px 0", fontSize: "12px", color: "#999" }}>
+                  {paymentStatusLabels[job.payment_status]}
+                </p>
+                <button
+                  onClick={() => acceptJob(job.id)}
+                  disabled={acceptingJobId === job.id || workerProfile?.worker_status !== "online"}
+                  style={{
+                    padding: "8px 16px",
+                    backgroundColor: "#0057FF",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "6px",
+                    fontWeight: 600,
+                    cursor: acceptingJobId === job.id || workerProfile?.worker_status !== "online" ? "not-allowed" : "pointer",
+                    opacity: acceptingJobId === job.id || workerProfile?.worker_status !== "online" ? 0.6 : 1,
+                  }}
+                >
+                  {acceptingJobId === job.id ? "Accepting..." : "Accept job"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Accepted jobs */}
       {workerCanAcceptNewJobs && acceptedJobs.length > 0 && (
         <div style={{ marginBottom: "32px" }}>
@@ -1465,7 +1535,13 @@ export function WorkerPanel() {
                 </div>
                 <p style={{ margin: "0 0 8px 0", color: "#333" }}>{job.description}</p>
                 <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#666" }}>
-                  Location: {job.location_name}
+                  Address: {job.service_address ?? job.location_name ?? "Location pending"}
+                </p>
+                <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#666" }}>
+                  When: {formatScheduledFor(job.scheduled_for)}
+                </p>
+                <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#666" }}>
+                  Payment: {job.booking_payment_method ? bookingPaymentMethodLabels[job.booking_payment_method] : "Payment preference pending"}
                 </p>
                 <p style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#666' }}>
                   {paymentStatusLabels[job.payment_status]}
@@ -1621,11 +1697,17 @@ export function WorkerPanel() {
                   <p style={{ margin: "0 0 8px 0", color: "#333" }}>{job.description}</p>
                   {job.location_name && (
                     <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#666" }}>
-                      Location: {job.location_name}
+                      Address: {job.service_address ?? job.location_name}
                     </p>
                   )}
+                  <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#666" }}>
+                    When: {formatScheduledFor(job.scheduled_for)}
+                  </p>
                   <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#666" }}>{timelineLabel}</p>
                   <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#666" }}>{payoutLabel}</p>
+                  <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#666" }}>
+                    Payment: {job.booking_payment_method ? bookingPaymentMethodLabels[job.booking_payment_method] : "Payment preference pending"}
+                  </p>
                   <p style={{ margin: "0 0 12px 0", fontSize: "13px", color: "#666" }}>
                     {paymentStatusLabels[job.payment_status]}
                   </p>
@@ -1701,7 +1783,13 @@ export function WorkerPanel() {
                   {job.description}
                 </p>
                 <p style={{ margin: "0 0 12px 0", fontSize: "12px", color: "#999" }}>
-                  Location: {job.location_name}
+                  Address: {job.service_address ?? job.location_name ?? "Location pending"}
+                </p>
+                <p style={{ margin: "0 0 12px 0", fontSize: "12px", color: "#999" }}>
+                  When: {formatScheduledFor(job.scheduled_for)}
+                </p>
+                <p style={{ margin: "0 0 12px 0", fontSize: "12px", color: "#999" }}>
+                  Payment: {job.booking_payment_method ? bookingPaymentMethodLabels[job.booking_payment_method] : "Payment preference pending"}
                 </p>
                 <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#999' }}>
                   {paymentStatusLabels[job.payment_status]}

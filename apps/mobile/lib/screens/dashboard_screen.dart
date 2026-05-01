@@ -27,9 +27,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   final _descriptionController = TextEditingController();
   final _estimateController = TextEditingController(text: '45');
+  final _serviceAddressController = TextEditingController();
+  final _scheduledForController = TextEditingController();
   bool _submitting = false;
   String _selectedService = 'flat_tire';
   Map<String, dynamic> _selectedLocation = mockLocations[0];
+  String _bookingPaymentMethod = 'card';
 
   @override
   void initState() {
@@ -41,10 +44,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void dispose() {
     _descriptionController.dispose();
     _estimateController.dispose();
+    _serviceAddressController.dispose();
+    _scheduledForController.dispose();
     if (_channel != null) {
       Supabase.instance.client.removeChannel(_channel!);
     }
     super.dispose();
+  }
+
+  String _formatScheduledFor(DateTime? scheduledFor) {
+    if (scheduledFor == null) return 'Schedule pending';
+    final local = scheduledFor.toLocal();
+    final month = local.month.toString().padLeft(2, '0');
+    final day = local.day.toString().padLeft(2, '0');
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '${local.year}-$month-$day $hour:$minute';
+  }
+
+  String _bookingPaymentLabel(String? method) {
+    switch (method) {
+      case 'card':
+        return 'Pay by card';
+      case 'upi':
+        return 'Pay by UPI';
+      case 'cash':
+        return 'Pay with cash';
+      default:
+        return 'Payment preference pending';
+    }
+  }
+
+  DateTime? _parseScheduledFor(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return null;
+    final normalized = value.contains('T') ? value : value.replaceFirst(' ', 'T');
+    return DateTime.tryParse(normalized);
   }
 
   Future<void> _initialize() async {
@@ -132,10 +167,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _postJob(BuildContext sheetContext) async {
     final description = _descriptionController.text.trim();
     final estimate = double.tryParse(_estimateController.text.trim());
+    final serviceAddress = _serviceAddressController.text.trim();
+    final scheduledFor = _parseScheduledFor(_scheduledForController.text);
     if (description.isEmpty) return;
     if (estimate == null || estimate <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Enter a valid estimate price.')),
+      );
+      return;
+    }
+    if (serviceAddress.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter the service address.')),
+      );
+      return;
+    }
+    if (scheduledFor == null || !scheduledFor.isAfter(DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Choose a future service time.')),
       );
       return;
     }
@@ -149,6 +198,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         'location_lat': _selectedLocation['lat'],
         'location_lng': _selectedLocation['lng'],
         'location_name': _selectedLocation['name'],
+        'service_address': serviceAddress,
+        'scheduled_for': scheduledFor.toUtc().toIso8601String(),
+        'booking_payment_method': _bookingPaymentMethod,
         'estimated_price': estimate,
       }).select().single();
       if (mounted) {
@@ -159,8 +211,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
       _descriptionController.clear();
       _estimateController.text = '45';
+      _serviceAddressController.clear();
+      _scheduledForController.clear();
       _selectedService = 'flat_tire';
       _selectedLocation = mockLocations[0];
+      _bookingPaymentMethod = 'card';
       if (mounted) Navigator.pop(sheetContext);
     } catch (e) {
       if (mounted) {
@@ -176,8 +231,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _showNewJobSheet() {
     _descriptionController.clear();
     _estimateController.text = '45';
+    _serviceAddressController.clear();
+    _scheduledForController.clear();
     _selectedService = 'flat_tire';
     _selectedLocation = mockLocations[0];
+    _bookingPaymentMethod = 'card';
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -246,6 +304,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       .toList(),
                   onChanged: (value) {
                     setDialogState(() => _selectedService = value ?? 'flat_tire');
+                  },
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Service address',
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _serviceAddressController,
+                  decoration: const InputDecoration(
+                    hintText: 'Apartment, street, building, city',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Schedule your service',
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _scheduledForController,
+                  keyboardType: TextInputType.datetime,
+                  decoration: const InputDecoration(
+                    hintText: 'YYYY-MM-DD HH:MM',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Booking payment preference',
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: _bookingPaymentMethod,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'card', child: Text('Pay by card')),
+                    DropdownMenuItem(value: 'upi', child: Text('Pay by UPI')),
+                    DropdownMenuItem(value: 'cash', child: Text('Pay with cash')),
+                  ],
+                  onChanged: (value) {
+                    setDialogState(() {
+                      _bookingPaymentMethod = value ?? 'card';
+                    });
                   },
                 ),
                 const SizedBox(height: 12),
@@ -382,6 +489,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             subtitle: Text(
                               [
                                 job.description,
+                                if (job.serviceAddress != null)
+                                  'Address: ${job.serviceAddress}',
+                                if (job.scheduledFor != null)
+                                  'When: ${_formatScheduledFor(job.scheduledFor)}',
+                                if (job.bookingPaymentMethod != null)
+                                  'Booking: ${_bookingPaymentLabel(job.bookingPaymentMethod)}',
                                 if (job.estimatedPrice != null)
                                   'Estimate: \$${job.estimatedPrice!.toStringAsFixed(2)}',
                                 if (job.finalPrice != null)

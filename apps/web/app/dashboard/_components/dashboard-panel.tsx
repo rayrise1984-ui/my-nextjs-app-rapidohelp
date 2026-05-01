@@ -13,6 +13,7 @@ import { JobRatingPanel } from "@/components/job-rating-panel";
 import {
   addJob,
   bookableServiceTypes,
+  bookingPaymentMethodLabels,
   isBookableServiceType,
   paymentStatusLabels,
   removeJob,
@@ -101,6 +102,12 @@ const workerStatusLabel = (status: RecommendedWorker["workerStatus"]): string =>
   return "offline";
 };
 
+const formatScheduledFor = (value?: string | null): string => {
+  if (!value) return "Schedule pending";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+};
+
 export function DashboardPanel() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -116,6 +123,10 @@ export function DashboardPanel() {
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState(MOCK_LOCATIONS[0]);
   const [estimatePrice, setEstimatePrice] = useState("45");
+  const [serviceAddress, setServiceAddress] = useState("");
+  const [scheduledFor, setScheduledFor] = useState("");
+  const [bookingPaymentMethod, setBookingPaymentMethod] = useState<"card" | "upi" | "cash">("card");
+  const [preferredWorkerId, setPreferredWorkerId] = useState("");
   const [payingJobId, setPayingJobId] = useState<string | null>(null);
   const [cancellingJobId, setCancellingJobId] = useState<string | null>(null);
   const [recommendedWorkers, setRecommendedWorkers] = useState<RecommendedWorker[]>([]);
@@ -125,13 +136,15 @@ export function DashboardPanel() {
 
   useEffect(() => {
     const requestedService = searchParams.get("service");
-    if (requestedService && requestedService in serviceTypeLabels) {
-      if (isBookableServiceType(requestedService)) {
-        setServiceType(requestedService);
-        return;
-      }
+      if (requestedService && requestedService in serviceTypeLabels) {
+        if (isBookableServiceType(requestedService)) {
+          setServiceType(requestedService);
+          setPreferredWorkerId("");
+          return;
+        }
 
       setServiceType("handyman_help");
+      setPreferredWorkerId("");
       setMessage(
         `${serviceTypeLabels[requestedService as ServiceType]} needs the latest live service update before booking. Showing Handyman Help for now.`,
       );
@@ -266,6 +279,27 @@ export function DashboardPanel() {
       return;
     }
 
+    if (!serviceAddress.trim()) {
+      setError("Please enter the service address.");
+      return;
+    }
+
+    if (!scheduledFor.trim()) {
+      setError("Please choose a service time.");
+      return;
+    }
+
+    const scheduledDate = new Date(scheduledFor);
+    if (Number.isNaN(scheduledDate.getTime()) || scheduledDate.getTime() <= Date.now()) {
+      setError("Please choose a future service time.");
+      return;
+    }
+
+    if (preferredWorkerId && !recommendedWorkers.some((worker) => worker.id === preferredWorkerId)) {
+      setError("Please choose a recommended service partner or leave auto-match selected.");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     setMessage(null);
@@ -282,6 +316,10 @@ export function DashboardPanel() {
         location_lng: location.lng,
         location_name: location.name,
         estimated_price: parsedEstimate,
+        service_address: serviceAddress.trim(),
+        scheduled_for: scheduledDate.toISOString(),
+        booking_payment_method: bookingPaymentMethod,
+        preferred_worker_id: preferredWorkerId || null,
       });
 
       if (insertError) {
@@ -291,6 +329,10 @@ export function DashboardPanel() {
         setDescription("");
         setServiceType("flat_tire");
         setEstimatePrice("45");
+        setServiceAddress("");
+        setScheduledFor("");
+        setBookingPaymentMethod("card");
+        setPreferredWorkerId("");
       }
     } catch (err) {
       setError(`Failed to post job: ${err instanceof Error ? err.message : String(err)}`);
@@ -374,7 +416,13 @@ export function DashboardPanel() {
     const client = createSupabaseBrowserClient();
     if (!client || !session) return;
 
-    const workerIds = Array.from(new Set(jobs.map((job) => job.worker_id).filter((id): id is string => Boolean(id))));
+    const workerIds = Array.from(
+      new Set(
+        jobs
+          .flatMap((job) => [job.worker_id, job.preferred_worker_id])
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
     if (workerIds.length === 0) {
       setWorkerProfilesById({});
       return;
@@ -403,7 +451,7 @@ export function DashboardPanel() {
     };
   }, [jobs, session]);
 
-  const markJobPaid = async (jobId: string, method: 'card' | 'upi') => {
+  const markJobPaid = async (jobId: string, method: "card" | "upi" | "cash") => {
     const client = createSupabaseBrowserClient();
     if (!client) {
       return;
@@ -479,7 +527,10 @@ export function DashboardPanel() {
               What do you need?
               <select
                 value={serviceType}
-                onChange={(e) => setServiceType(e.target.value as ServiceType)}
+                onChange={(e) => {
+                  setServiceType(e.target.value as ServiceType);
+                  setPreferredWorkerId("");
+                }}
               >
                 {bookableServiceTypes.map((type) => (
                   <option key={type} value={type}>
@@ -528,12 +579,60 @@ export function DashboardPanel() {
             </label>
 
             <label>
+              Preferred service partner
+              <select
+                value={preferredWorkerId}
+                onChange={(event) => setPreferredWorkerId(event.target.value)}
+              >
+                <option value="">Auto-match the best available partner</option>
+                {recommendedWorkers.map((worker) => (
+                  <option key={worker.id} value={worker.id}>
+                    {worker.name}
+                    {worker.workerStatus === "online" ? " · online" : ""}
+                    {worker.ratingCount > 0 ? ` · ${worker.ratingAverage.toFixed(1)} rating` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
               Describe your situation
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="E.g., front left tire is flat, I'm on Highway 101 northbound..."
               />
+            </label>
+
+            <label>
+              Service address
+              <input
+                value={serviceAddress}
+                onChange={(e) => setServiceAddress(e.target.value)}
+                placeholder="Apartment, street, building, city"
+                type="text"
+              />
+            </label>
+
+            <label>
+              Schedule your service
+              <input
+                value={scheduledFor}
+                onChange={(e) => setScheduledFor(e.target.value)}
+                type="datetime-local"
+              />
+            </label>
+
+            <label>
+              Booking payment preference
+              <select
+                value={bookingPaymentMethod}
+                onChange={(e) => setBookingPaymentMethod(e.target.value as "card" | "upi" | "cash")}
+              >
+                <option value="card">{bookingPaymentMethodLabels.card}</option>
+                <option value="upi">{bookingPaymentMethodLabels.upi}</option>
+                <option value="cash">{bookingPaymentMethodLabels.cash}</option>
+              </select>
             </label>
 
             <label>
@@ -551,11 +650,11 @@ export function DashboardPanel() {
 
             <label>
               Your location (test mode)
-              <select
-                value={location.name}
-                onChange={(e) => {
-                  const loc = MOCK_LOCATIONS.find((l) => l.name === e.target.value);
-                  if (loc) setLocation(loc);
+                <select
+                  value={location.name}
+                  onChange={(e) => {
+                    const loc = MOCK_LOCATIONS.find((l) => l.name === e.target.value);
+                    if (loc) setLocation(loc);
                 }}
               >
                 {MOCK_LOCATIONS.map((loc) => (
@@ -590,9 +689,10 @@ export function DashboardPanel() {
             </div>
           ) : (
             <div className="request-list">
-              {jobs.map((job) => {
+                {jobs.map((job) => {
                 const dueAmount = job.final_price ?? job.estimated_price;
                 const assignedWorker = job.worker_id ? workerProfilesById[job.worker_id] : null;
+                const preferredWorker = job.preferred_worker_id ? workerProfilesById[job.preferred_worker_id] : null;
                 return (
                 <div className="request-item" key={job.id}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
@@ -608,6 +708,26 @@ export function DashboardPanel() {
                     </span>
                   </div>
                   <p>{job.description}</p>
+                  <div className="request-meta">
+                    <span className="pill muted">
+                      {job.service_address ?? "Address pending"}
+                    </span>
+                    <span className="pill muted">
+                      {formatScheduledFor(job.scheduled_for)}
+                    </span>
+                    <span className="pill muted">
+                      {job.booking_payment_method ? bookingPaymentMethodLabels[job.booking_payment_method] : "Payment preference pending"}
+                    </span>
+                  </div>
+                  {preferredWorker ? (
+                    <p style={{ color: "#0057FF", fontSize: "14px", margin: "8px 0 0 0" }}>
+                      Preferred partner: {preferredWorker.name}
+                    </p>
+                  ) : job.preferred_worker_id ? (
+                    <p style={{ color: "#0057FF", fontSize: "14px", margin: "8px 0 0 0" }}>
+                      Preferred partner requested
+                    </p>
+                  ) : null}
                   {job.worker_id && (
                     <p style={{ color: "#0057FF", fontSize: "14px", margin: "8px 0 0 0" }}>
                       Helper assigned
@@ -639,6 +759,9 @@ export function DashboardPanel() {
                     <span className="pill muted">
                       {new Date(job.created_at).toLocaleDateString()}
                     </span>
+                    <span className="pill muted">
+                      {job.scheduled_for ? formatScheduledFor(job.scheduled_for) : "Schedule pending"}
+                    </span>
                     {job.estimated_price ? (
                       <span className="pill muted">
                         Estimate ${job.estimated_price.toFixed(2)}
@@ -651,6 +774,9 @@ export function DashboardPanel() {
                     ) : null}
                     <span className="pill muted">
                       {paymentStatusLabels[job.payment_status]}
+                    </span>
+                    <span className="pill muted">
+                      {job.booking_payment_method ? bookingPaymentMethodLabels[job.booking_payment_method] : "Payment preference pending"}
                     </span>
                   </div>
                   {job.payment_reference ? (
@@ -676,6 +802,13 @@ export function DashboardPanel() {
                         type="button"
                       >
                         Mark paid by UPI
+                      </button>
+                      <button
+                        disabled={payingJobId === job.id}
+                        onClick={() => void markJobPaid(job.id, 'cash')}
+                        type="button"
+                      >
+                        Mark paid cash
                       </button>
                     </div>
                   ) : null}

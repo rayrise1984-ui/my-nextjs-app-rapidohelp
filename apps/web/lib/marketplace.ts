@@ -19,21 +19,26 @@ export type ServiceType =
 export type JobStatus = 'pending' | 'accepted' | 'in_progress' | 'completed' | 'cancelled' | 'cancelled_by_worker';
 export type WorkerStatus = 'offline' | 'online' | 'on_job';
 export type AppRole = 'customer' | 'agent' | 'admin';
+export type BookingPaymentMethod = 'card' | 'upi' | 'cash';
 
 export interface Job {
   id: string;
   user_id: string;
   worker_id: string | null;
+  preferred_worker_id?: string | null;
   service_type: ServiceType;
   description: string;
   location_lat: number;
   location_lng: number;
   location_name?: string;
+  service_address?: string | null;
+  scheduled_for?: string | null;
+  booking_payment_method?: BookingPaymentMethod | null;
   status: JobStatus;
   estimated_price?: number;
   final_price?: number;
   payment_status: 'unpaid' | 'processing' | 'paid' | 'refunded';
-  payment_method?: 'card' | 'upi' | 'cash';
+  payment_method?: BookingPaymentMethod;
   payment_reference?: string;
   paid_at?: string;
   company_fee_amount?: number;
@@ -162,6 +167,12 @@ export const paymentStatusLabels: Record<Job['payment_status'], string> = {
   processing: 'Payment processing',
   paid: 'Paid',
   refunded: 'Refunded',
+};
+
+export const bookingPaymentMethodLabels: Record<BookingPaymentMethod, string> = {
+  card: 'Pay by card',
+  upi: 'Pay by UPI',
+  cash: 'Pay with cash',
 };
 
 export function calculatePayoutSplit(amount: number): { companyFeeAmount: number; workerPayoutAmount: number } {

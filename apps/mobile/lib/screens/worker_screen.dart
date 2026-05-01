@@ -32,6 +32,29 @@ bool isCompleteWorkerBackgroundCheck(Map<String, dynamic>? row) {
       RegExp(r'^\d{4}$').hasMatch((row['payout_routing_last4'] as String? ?? '').trim());
 }
 
+String _formatScheduledFor(DateTime? scheduledFor) {
+  if (scheduledFor == null) return 'Schedule pending';
+  final local = scheduledFor.toLocal();
+  final month = local.month.toString().padLeft(2, '0');
+  final day = local.day.toString().padLeft(2, '0');
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '${local.year}-$month-$day $hour:$minute';
+}
+
+String _bookingPaymentLabel(String? method) {
+  switch (method) {
+    case 'card':
+      return 'Pay by card';
+    case 'upi':
+      return 'Pay by UPI';
+    case 'cash':
+      return 'Pay with cash';
+    default:
+      return 'Payment preference pending';
+  }
+}
+
 class WorkerScreen extends StatefulWidget {
   const WorkerScreen({super.key});
 
@@ -559,7 +582,13 @@ class _WorkerScreenState extends State<WorkerScreen> {
     final serviceSummary = _workerServiceTypes
         .map((type) => serviceVisualFor(type).label)
         .join(', ');
-    final matchingJobs = _workerCanAcceptJobs ? _pendingJobs : const <Job>[];
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    final offeredJobs = _workerCanAcceptJobs && currentUserId != null
+        ? _pendingJobs.where((job) => job.preferredWorkerId == currentUserId).toList()
+        : const <Job>[];
+    final matchingJobs = _workerCanAcceptJobs && currentUserId != null
+        ? _pendingJobs.where((job) => job.preferredWorkerId != currentUserId).toList()
+        : const <Job>[];
     final accessReady = _workerVerified && !_workerDisabled;
 
     return Scaffold(
@@ -710,13 +739,24 @@ class _WorkerScreenState extends State<WorkerScreen> {
                                     ),
                                     const SizedBox(height: 6),
                                     Text(job.description),
-                                    if (job.locationName != null) ...[
-                                      const SizedBox(height: 4),
-                                      Text('Location: ${job.locationName}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                    ],
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Address: ${job.serviceAddress ?? job.locationName ?? 'Location pending'}',
+                                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'When: ${_formatScheduledFor(job.scheduledFor)}',
+                                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                    ),
                                     const SizedBox(height: 4),
                                     Text(
                                       '${job.status == 'completed' ? 'Completed' : job.status == 'in_progress' ? 'In progress' : job.status == 'accepted' ? 'Accepted' : 'Cancelled'} ${timestamp.toLocal()}',
+                                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Payment: ${_bookingPaymentLabel(job.bookingPaymentMethod)}',
                                       style: const TextStyle(fontSize: 12, color: Colors.grey),
                                     ),
                                     const SizedBox(height: 4),
@@ -745,6 +785,59 @@ class _WorkerScreenState extends State<WorkerScreen> {
                 if (_error != null) ...[
                   const SizedBox(height: 12),
                   Text(_error!, style: const TextStyle(color: Color(0xFF8A1C0F))),
+                ],
+                if (offeredJobs.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text('Offered to you', style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 8),
+                  ...offeredJobs.map((job) {
+                    final visual = serviceVisualFor(job.serviceType);
+                    return Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                ServiceAvatar(serviceType: job.serviceType, size: 40),
+                                const SizedBox(width: 10),
+                                Expanded(child: Text(visual.label)),
+                                const Chip(
+                                  label: Text('Preferred'),
+                                  backgroundColor: Color(0xFF0057FF),
+                                  labelStyle: const TextStyle(color: Colors.white),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(job.description),
+                            const SizedBox(height: 4),
+                            Text('Address: ${job.serviceAddress ?? job.locationName ?? 'Location pending'}'),
+                            const SizedBox(height: 4),
+                            Text('When: ${_formatScheduledFor(job.scheduledFor)}'),
+                            const SizedBox(height: 4),
+                            Text('Payment: ${_bookingPaymentLabel(job.bookingPaymentMethod)}'),
+                            const SizedBox(height: 12),
+                            FilledButton(
+                              onPressed: _acceptingJobId == job.id || _workerStatus != 'online' || !_workerCanAcceptJobs
+                                  ? null
+                                  : () => _acceptJob(job.id),
+                              child: Text(
+                                _acceptingJobId == job.id
+                                    ? 'Please wait...'
+                                    : !_workerCanAcceptJobs
+                                        ? 'Review Pending'
+                                        : _workerStatus != 'online'
+                                        ? 'Go online'
+                                        : 'Accept',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
                 ],
                 if (accessReady) ...[
                   const SizedBox(height: 16),
@@ -780,10 +873,12 @@ class _WorkerScreenState extends State<WorkerScreen> {
                               ),
                               const SizedBox(height: 8),
                               Text(job.description),
-                              if (job.locationName != null) ...[
-                                const SizedBox(height: 6),
-                                Text('Location: ${job.locationName}'),
-                              ],
+                              const SizedBox(height: 6),
+                              Text('Address: ${job.serviceAddress ?? job.locationName ?? 'Location pending'}'),
+                              const SizedBox(height: 4),
+                              Text('When: ${_formatScheduledFor(job.scheduledFor)}'),
+                              const SizedBox(height: 4),
+                              Text('Payment: ${_bookingPaymentLabel(job.bookingPaymentMethod)}'),
                               const SizedBox(height: 12),
                               if (job.status == 'accepted') ...[
                                 const SizedBox(height: 12),
@@ -890,7 +985,9 @@ class _WorkerScreenState extends State<WorkerScreen> {
                               job.description,
                               if (job.estimatedPrice != null)
                                 'Estimate: \$${job.estimatedPrice!.toStringAsFixed(2)}',
-                              if (job.locationName != null) job.locationName!,
+                              if (job.serviceAddress != null) 'Address: ${job.serviceAddress}',
+                              if (job.scheduledFor != null) 'When: ${_formatScheduledFor(job.scheduledFor)}',
+                              'Payment: ${_bookingPaymentLabel(job.bookingPaymentMethod)}',
                             ].join('\n'),
                           ),
                           trailing: FilledButton.tonal(

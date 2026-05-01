@@ -4,11 +4,15 @@ class Job {
   final String id;
   final String userId;
   final String? workerId;
+  final String? preferredWorkerId;
   final String serviceType;
   final String description;
   final double locationLat;
   final double locationLng;
   final String? locationName;
+  final String? serviceAddress;
+  final DateTime? scheduledFor;
+  final String? bookingPaymentMethod;
   final String status;
   final double? estimatedPrice;
   final double? finalPrice;
@@ -27,11 +31,15 @@ class Job {
     required this.id,
     required this.userId,
     this.workerId,
+    this.preferredWorkerId,
     required this.serviceType,
     required this.description,
     required this.locationLat,
     required this.locationLng,
     this.locationName,
+    this.serviceAddress,
+    this.scheduledFor,
+    this.bookingPaymentMethod,
     required this.status,
     this.estimatedPrice,
     this.finalPrice,
@@ -52,11 +60,15 @@ class Job {
       id: json['id'] as String,
       userId: json['user_id'] as String,
       workerId: json['worker_id'] as String?,
+      preferredWorkerId: json['preferred_worker_id'] as String?,
       serviceType: json['service_type'] as String,
       description: json['description'] as String,
       locationLat: (json['location_lat'] as num).toDouble(),
       locationLng: (json['location_lng'] as num).toDouble(),
       locationName: json['location_name'] as String?,
+      serviceAddress: json['service_address'] as String?,
+      scheduledFor: json['scheduled_for'] != null ? DateTime.parse(json['scheduled_for'] as String) : null,
+      bookingPaymentMethod: json['booking_payment_method'] as String?,
       status: json['status'] as String,
       estimatedPrice: json['estimated_price'] != null ? (json['estimated_price'] as num).toDouble() : null,
       finalPrice: json['final_price'] != null ? (json['final_price'] as num).toDouble() : null,
@@ -76,6 +88,10 @@ class Job {
   Job copyWith({
     String? status,
     String? workerId,
+    String? preferredWorkerId,
+    String? serviceAddress,
+    DateTime? scheduledFor,
+    String? bookingPaymentMethod,
     String? paymentStatus,
     String? paymentMethod,
     String? paymentReference,
@@ -87,11 +103,15 @@ class Job {
       id: id,
       userId: userId,
       workerId: workerId ?? this.workerId,
+      preferredWorkerId: preferredWorkerId ?? this.preferredWorkerId,
       serviceType: serviceType,
       description: description,
       locationLat: locationLat,
       locationLng: locationLng,
       locationName: locationName,
+      serviceAddress: serviceAddress ?? this.serviceAddress,
+      scheduledFor: scheduledFor ?? this.scheduledFor,
+      bookingPaymentMethod: bookingPaymentMethod ?? this.bookingPaymentMethod,
       status: status ?? this.status,
       estimatedPrice: estimatedPrice,
       finalPrice: finalPrice,
