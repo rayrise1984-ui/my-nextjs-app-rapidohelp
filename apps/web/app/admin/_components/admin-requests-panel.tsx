@@ -15,6 +15,7 @@ import {
   type JobStatus,
   type ServiceType,
 } from "@/lib/marketplace";
+import { groupCommentsByRequest, type SupportRequest, type SupportRequestComment } from "@/lib/support";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 
 const HELPER_BACKGROUND_CHECK_CONSENT_VERSION = "helper_background_check_v1";
@@ -53,6 +54,21 @@ type WorkerBackgroundCheck = {
   legal_postal_code: string | null;
   status: string | null;
   submitted_at: string | null;
+  updated_at: string | null;
+};
+
+type AdminSupportRequest = SupportRequest & {
+  updated_at: string;
+};
+
+type AdminSupportComment = SupportRequestComment;
+
+type AdminActivityItem = {
+  id: string;
+  title: string;
+  detail: string;
+  timestamp: string;
+  tone: "info" | "success" | "warn" | "danger";
 };
 
 type WorkerAccessDraft = {
@@ -120,6 +136,29 @@ const workerReviewColor = (worker: AdminWorkerProfile) => {
   return "#2E7D32";
 };
 
+const sortSupportRequests = (requests: AdminSupportRequest[]) =>
+  [...requests].sort(
+    (left, right) =>
+      new Date(right.updated_at ?? right.created_at).getTime() -
+      new Date(left.updated_at ?? left.created_at).getTime(),
+  );
+
+const truncateText = (value: string, maxLength = 112) =>
+  value.length > maxLength ? `${value.slice(0, maxLength - 1).trimEnd()}…` : value;
+
+const activityToneColor = (tone: AdminActivityItem["tone"]) => {
+  switch (tone) {
+    case "success":
+      return "#2E7D32";
+    case "warn":
+      return "#8C4B00";
+    case "danger":
+      return "#8A1C0F";
+    default:
+      return "#005de8";
+  }
+};
+
 export function AdminRequestsPanel() {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
@@ -127,6 +166,8 @@ export function AdminRequestsPanel() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [workers, setWorkers] = useState<AdminWorkerProfile[]>([]);
   const [backgroundChecksByWorkerId, setBackgroundChecksByWorkerId] = useState<Record<string, WorkerBackgroundCheck>>({});
+  const [supportRequests, setSupportRequests] = useState<AdminSupportRequest[]>([]);
+  const [supportComments, setSupportComments] = useState<AdminSupportComment[]>([]);
   const [statusDrafts, setStatusDrafts] = useState<Record<string, JobStatus>>({});
   const [workerDrafts, setWorkerDrafts] = useState<Record<string, WorkerAccessDraft>>({});
   const [loading, setLoading] = useState(true);
@@ -149,6 +190,8 @@ export function AdminRequestsPanel() {
     let jobChannel: ReturnType<typeof client.channel> | null = null;
     let profileChannel: ReturnType<typeof client.channel> | null = null;
     let backgroundChannel: ReturnType<typeof client.channel> | null = null;
+    let supportRequestChannel: ReturnType<typeof client.channel> | null = null;
+    let supportCommentChannel: ReturnType<typeof client.channel> | null = null;
 
     const initialize = async () => {
       const { data } = await client.auth.getSession();
@@ -186,7 +229,7 @@ export function AdminRequestsPanel() {
         return;
       }
 
-      const [jobsResult, workersResult, backgroundChecksResult] = await Promise.all([
+      const [jobsResult, workersResult, backgroundChecksResult, supportRequestsResult, supportCommentsResult] = await Promise.all([
         client.from("jobs").select("*").order("created_at", { ascending: false }),
         client
           .from("profiles")
@@ -198,9 +241,17 @@ export function AdminRequestsPanel() {
         client
           .from("worker_background_checks")
           .select(
-            "worker_id, legal_full_name, ssn_last4, driver_license_number, driver_license_state, legal_address_line1, legal_address_line2, legal_city, legal_state, legal_postal_code, status, submitted_at",
+            "worker_id, legal_full_name, ssn_last4, driver_license_number, driver_license_state, legal_address_line1, legal_address_line2, legal_city, legal_state, legal_postal_code, status, submitted_at, updated_at",
           )
           .order("updated_at", { ascending: false }),
+        client
+          .from("support_requests")
+          .select("id, user_id, title, description, priority, status, created_at, updated_at")
+          .order("updated_at", { ascending: false }),
+        client
+          .from("support_request_comments")
+          .select("id, request_id, author_id, body, is_internal, created_at")
+          .order("created_at", { ascending: false }),
       ]);
 
       if (disposed) return;
@@ -238,6 +289,19 @@ export function AdminRequestsPanel() {
         setBackgroundChecksByWorkerId(
           Object.fromEntries(nextBackgroundChecks.map((check) => [check.worker_id, check])),
         );
+      }
+
+      if (supportRequestsResult.error) {
+        setError(supportRequestsResult.error.message);
+      } else {
+        const nextSupportRequests = sortSupportRequests((supportRequestsResult.data ?? []) as AdminSupportRequest[]);
+        setSupportRequests(nextSupportRequests);
+      }
+
+      if (supportCommentsResult.error) {
+        setError(supportCommentsResult.error.message);
+      } else {
+        setSupportComments((supportCommentsResult.data ?? []) as AdminSupportComment[]);
       }
 
       jobChannel = client.channel(`admin-jobs-${nextSession.user.id}`);
@@ -328,6 +392,57 @@ export function AdminRequestsPanel() {
         )
         .subscribe();
 
+      supportRequestChannel = client.channel(`admin-support-requests-${nextSession.user.id}`);
+      (supportRequestChannel as any)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "support_requests",
+          },
+          (payload: { eventType: "INSERT" | "UPDATE" | "DELETE"; new: AdminSupportRequest; old: { id?: string } }) => {
+            if (payload.eventType === "DELETE") {
+              const deletedId = payload.old.id;
+              if (!deletedId) return;
+              setSupportRequests((current) => current.filter((request) => request.id !== deletedId));
+              return;
+            }
+
+            setSupportRequests((current) =>
+              sortSupportRequests([payload.new, ...current.filter((request) => request.id !== payload.new.id)]),
+            );
+          },
+        )
+        .subscribe();
+
+      supportCommentChannel = client.channel(`admin-support-comments-${nextSession.user.id}`);
+      (supportCommentChannel as any)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "support_request_comments",
+          },
+          (payload: {
+            eventType: "INSERT" | "UPDATE" | "DELETE";
+            new: AdminSupportComment;
+            old: { id?: string };
+          }) => {
+            setSupportComments((current) => {
+              if (payload.eventType === "DELETE") {
+                const deletedId = payload.old.id;
+                if (!deletedId) return current;
+                return current.filter((comment) => comment.id !== deletedId);
+              }
+
+              return [payload.new, ...current.filter((comment) => comment.id !== payload.new.id)];
+            });
+          },
+        )
+        .subscribe();
+
       authSubscription = client.auth
         .onAuthStateChange((_event, nextSessionState) => {
           setSession(nextSessionState);
@@ -346,6 +461,8 @@ export function AdminRequestsPanel() {
       if (jobChannel) void client.removeChannel(jobChannel as never);
       if (profileChannel) void client.removeChannel(profileChannel as never);
       if (backgroundChannel) void client.removeChannel(backgroundChannel as never);
+      if (supportRequestChannel) void client.removeChannel(supportRequestChannel as never);
+      if (supportCommentChannel) void client.removeChannel(supportCommentChannel as never);
     };
   }, [router]);
 
@@ -363,6 +480,11 @@ export function AdminRequestsPanel() {
     const onlineWorkers = workers.filter(
       (worker) => worker.worker_verified && !worker.worker_disabled && worker.worker_status === "online",
     ).length;
+    const openSupportRequests = supportRequests.filter((request) => request.status === "open").length;
+    const activeSupportRequests = supportRequests.filter((request) => request.status === "in_progress").length;
+    const resolvedSupportRequests = supportRequests.filter(
+      (request) => request.status === "resolved" || request.status === "closed",
+    ).length;
 
     return {
       open: jobs.filter((job) => job.status === "pending").length,
@@ -374,8 +496,149 @@ export function AdminRequestsPanel() {
       approvedWorkers,
       pausedWorkers,
       onlineWorkers,
+      openSupportRequests,
+      activeSupportRequests,
+      resolvedSupportRequests,
     };
-  }, [jobs, workers]);
+  }, [jobs, supportRequests, workers]);
+
+  const activityItems = useMemo(() => {
+    const supportCommentsByRequestId = groupCommentsByRequest(supportComments);
+
+    const jobItems: AdminActivityItem[] = jobs.flatMap((job) => {
+      const location = job.location_name?.trim() || job.service_address?.trim() || "Location pending";
+      const value = Number(job.final_price ?? job.estimated_price ?? 0).toFixed(2);
+      const items: Array<AdminActivityItem | null> = [
+        {
+          id: `job:${job.id}:created`,
+          title: `Job posted for ${serviceTypeLabels[job.service_type]}`,
+          detail: `${location} · ${paymentStatusLabels[job.payment_status]}`,
+          timestamp: job.created_at,
+          tone: "info",
+        },
+      ];
+
+      if (job.accepted_at) {
+        items.push({
+          id: `job:${job.id}:accepted`,
+          title: "Job accepted",
+          detail: job.worker_id ? `Service partner ${job.worker_id}` : "Partner assignment confirmed",
+          timestamp: job.accepted_at,
+          tone: "info",
+        });
+      }
+
+      if (job.completed_at) {
+        items.push({
+          id: `job:${job.id}:completed`,
+          title: "Job completed",
+          detail: `Final value $${value} · ${job.payment_status === "paid" ? "Paid" : paymentStatusLabels[job.payment_status]}`,
+          timestamp: job.completed_at,
+          tone: "success",
+        });
+      } else if (job.status === "cancelled" || job.status === "cancelled_by_worker") {
+        items.push({
+          id: `job:${job.id}:cancelled`,
+          title: `Job ${jobStatusLabels[job.status]}`,
+          detail: `${location} · ${paymentStatusLabels[job.payment_status]}`,
+          timestamp: job.updated_at,
+          tone: "danger",
+        });
+      } else {
+        items.push({
+          id: `job:${job.id}:status`,
+          title: `Job ${jobStatusLabels[job.status]}`,
+          detail: `${location} · ${paymentStatusLabels[job.payment_status]}`,
+          timestamp: job.updated_at,
+          tone: "info",
+        });
+      }
+
+      if (job.paid_at) {
+        items.push({
+          id: `job:${job.id}:paid`,
+          title: "Payment recorded",
+          detail: `${paymentStatusLabels[job.payment_status]} · ${job.payment_method ?? job.booking_payment_method ?? "payment method not set"}`,
+          timestamp: job.paid_at,
+          tone: job.payment_status === "paid" ? "success" : "warn",
+        });
+      }
+
+      return items.filter(Boolean) as AdminActivityItem[];
+    });
+
+    const workerItems: AdminActivityItem[] = workers.map((worker) => ({
+      id: `worker:${worker.id}:${worker.updated_at ?? worker.id}`,
+      title: worker.worker_verified
+        ? "Service partner profile approved"
+        : worker.worker_disabled
+          ? "Service partner profile paused"
+          : worker.worker_profile_completed
+            ? "Service partner profile ready for review"
+            : "Service partner profile incomplete",
+      detail: `${worker.full_name?.trim() || worker.id} · ${
+        worker.worker_disabled
+          ? "Paused"
+          : worker.worker_verified
+            ? "Approved"
+            : workerHasCurrentConsent(worker)
+              ? "Consent on file"
+              : "Consent required"
+      }`,
+      timestamp: worker.updated_at ?? "1970-01-01T00:00:00.000Z",
+      tone: worker.worker_disabled ? "warn" : worker.worker_verified ? "success" : "info",
+    }));
+
+    const supportRequestItems: AdminActivityItem[] = supportRequests.map((request) => {
+      const comments = supportCommentsByRequestId[request.id] ?? [];
+      const latestComment = comments[comments.length - 1];
+      return {
+        id: `support:${request.id}:${request.updated_at}`,
+        title: `Support request ${request.status.replaceAll("_", " ")}`,
+        detail: latestComment
+          ? `${request.title} · ${truncateText(latestComment.body)}`
+          : `${request.title} · ${request.priority} priority`,
+        timestamp: request.updated_at ?? request.created_at,
+        tone:
+          request.status === "resolved" || request.status === "closed"
+            ? "success"
+            : request.status === "in_progress"
+              ? "warn"
+              : "info",
+      };
+    });
+
+    const supportCommentItems: AdminActivityItem[] = supportComments.map((comment) => ({
+      id: `support-comment:${comment.id}`,
+      title: comment.is_internal ? "Internal support note" : "Customer support reply",
+      detail: truncateText(comment.body),
+      timestamp: comment.created_at,
+      tone: comment.is_internal ? "warn" : "info",
+    }));
+
+    const backgroundItems: AdminActivityItem[] = Object.values(backgroundChecksByWorkerId).map((check) => ({
+      id: `background:${check.worker_id}:${check.updated_at ?? check.submitted_at ?? check.worker_id}`,
+      title: `Background check ${check.status ?? "submitted"}`,
+      detail: [
+        check.legal_full_name,
+        check.driver_license_state && check.driver_license_number
+          ? `${check.driver_license_state} ${check.driver_license_number}`
+          : null,
+        check.legal_city,
+        check.legal_state,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      timestamp: check.updated_at ?? check.submitted_at ?? "1970-01-01T00:00:00.000Z",
+      tone: check.status === "cleared" ? "success" : check.status === "rejected" ? "danger" : "warn",
+    }));
+
+    return [...jobItems, ...workerItems, ...supportRequestItems, ...supportCommentItems, ...backgroundItems]
+      .sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime())
+      .slice(0, 15);
+  }, [backgroundChecksByWorkerId, jobs, supportComments, supportRequests, workers]);
+
+  const supportCommentsByRequestId = useMemo(() => groupCommentsByRequest(supportComments), [supportComments]);
 
   const saveStatus = async (jobId: string) => {
     const client = createSupabaseBrowserClient();
@@ -442,7 +705,7 @@ export function AdminRequestsPanel() {
         worker_disabled: updated.worker_disabled ?? false,
       },
     }));
-      setMessage("Service partner access updated.");
+    setMessage("Service partner access updated.");
   };
 
   if (loading) return <div className="dashboard-loading">Loading admin workspace...</div>;
@@ -646,6 +909,64 @@ export function AdminRequestsPanel() {
             </div>
           )}
         </article>
+
+        <article className="dashboard-card">
+          <h2>Support inbox</h2>
+          <p className="dashboard-note">See customer support requests, staff replies, and the latest note on each request.</p>
+
+          {supportRequests.length === 0 ? (
+            <div className="empty-state">No support requests have been created yet.</div>
+          ) : (
+            <div className="request-list">
+              {supportRequests.map((request) => {
+                const requestComments = supportCommentsByRequestId[request.id] ?? [];
+                const latestComment = requestComments[requestComments.length - 1];
+
+                return (
+                  <div className="request-item" key={request.id}>
+                    <header>
+                      <div>
+                        <h3>{request.title}</h3>
+                        <p className="request-caption">Request ID: {request.id}</p>
+                        <p className="request-caption">Customer: {request.user_id}</p>
+                      </div>
+                      <span
+                        className="pill"
+                        style={{
+                          backgroundColor:
+                            request.status === "resolved" || request.status === "closed"
+                              ? "#2E7D32"
+                              : request.status === "in_progress"
+                                ? "#8C4B00"
+                                : "#005de8",
+                          color: "white",
+                        }}
+                      >
+                        {request.status.replaceAll("_", " ")}
+                      </span>
+                    </header>
+
+                    <p>{request.description}</p>
+
+                    <div className="request-meta">
+                      <span className="pill muted">Priority: {request.priority}</span>
+                      <span className="pill muted">{requestComments.length} comments</span>
+                      <span className="pill muted">
+                        {new Date(request.updated_at ?? request.created_at).toLocaleString()}
+                      </span>
+                    </div>
+
+                    {latestComment ? (
+                      <p className="dashboard-note">Latest note: {truncateText(latestComment.body, 160)}</p>
+                    ) : (
+                      <p className="dashboard-note">No replies yet.</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </article>
       </div>
 
       <div className="dashboard-stack">
@@ -663,6 +984,11 @@ export function AdminRequestsPanel() {
             <span className="pill muted">{metrics.approvedWorkers} approved service partners</span>
             <span className="pill muted">{metrics.pausedWorkers} paused service partners</span>
           </div>
+          <div className="request-meta">
+            <span className="pill muted">{metrics.openSupportRequests} open support requests</span>
+            <span className="pill muted">{metrics.activeSupportRequests} active support requests</span>
+            <span className="pill muted">{metrics.resolvedSupportRequests} resolved support requests</span>
+          </div>
           <p className="dashboard-note">Gross completed value: ${metrics.gross.toFixed(2)}</p>
         </article>
 
@@ -673,6 +999,35 @@ export function AdminRequestsPanel() {
           </p>
           <p className="dashboard-note">Role: {role}</p>
           <p className="dashboard-note">Grant access by setting `profiles.role` to `agent` or `admin`.</p>
+        </article>
+
+        <article className="dashboard-card">
+          <h2>Activity feed</h2>
+          <p className="dashboard-note">
+            Every booking, support request, profile update, verification change, and payment event the staff role can see
+            rolls into this timeline.
+          </p>
+
+          {activityItems.length === 0 ? (
+            <div className="empty-state">No recent activity yet.</div>
+          ) : (
+            <div className="request-list">
+              {activityItems.map((item) => (
+                <div className="request-item" key={item.id}>
+                  <header>
+                    <div>
+                      <h3>{item.title}</h3>
+                      <p className="request-caption">{new Date(item.timestamp).toLocaleString()}</p>
+                    </div>
+                    <span className="pill" style={{ backgroundColor: activityToneColor(item.tone), color: "white" }}>
+                      {item.tone}
+                    </span>
+                  </header>
+                  <p>{item.detail || "No additional details available."}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </article>
 
         {message ? <p className="auth-success">{message}</p> : null}

@@ -1,7 +1,7 @@
 # RapidoHelp Terms of Service
 
-Effective date: April 29, 2026
-Version: 2026-04-29
+Effective date: May 1, 2026
+Version: 2026-05-01
 
 These Terms of Service ("Terms") are a binding agreement between you and RapidoHelp ("RapidoHelp," "we," "us," or "our"). By creating an account, signing in, posting a job, accepting a job, using the website, using the mobile app, or clicking "I agree," you agree to these Terms and to our marketplace rules.
 
@@ -45,9 +45,9 @@ You may not misuse the platform, bypass payments, harass or threaten others, dis
 
 You agree that RapidoHelp may send service-related messages, including account, booking, payment, safety, support, and worker verification communications. If SMS or phone features are enabled, carrier rates may apply. You can opt out of marketing messages where required by law, but service messages may still be sent.
 
-## 11. Privacy
+## 11. Privacy and Data Use
 
-RapidoHelp collects and uses account, location, job, payment, device, and support information to operate the platform, protect users, process transactions, provide support, and comply with law. A separate Privacy Policy should describe these practices in more detail. By using RapidoHelp, you consent to our collection and use of information as described in these Terms and any posted Privacy Policy.
+RapidoHelp collects and uses account, profile, location, job, payment, payout, device, support, verification, and activity information to operate the platform, match customers with workers, process payments and payouts, support background review, prevent fraud, resolve disputes, and comply with law. Authorized staff and admins may review activity records for support, safety, payment, verification, and compliance work. A separate Privacy Policy should describe these practices in more detail. By using RapidoHelp, you consent to our collection and use of information as described in these Terms and any posted Privacy Policy.
 
 ## 12. Intellectual Property
 
@@ -85,4 +85,4 @@ If part of these Terms is unenforceable, the remaining parts remain in effect. Y
 
 ## 20. Contact
 
-Questions about these Terms should be sent to support through the RapidoHelp app or website.
+Questions about these Terms should be sent to helpdesk@rapidohelp.com or through the RapidoHelp app or website.

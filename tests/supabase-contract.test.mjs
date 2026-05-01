@@ -38,11 +38,17 @@ const latestTrustedActions = read(
 const demoSeedScript = read("scripts/create-demo-users.cjs");
 const webAuthPanel = read("apps/web/components/auth-panel.tsx");
 const webLoginLinks = read("apps/web/components/login-links.tsx");
+const webSiteFooter = read("apps/web/components/site-footer.tsx");
 const webMiddleware = read("apps/web/utils/supabase/middleware.ts");
 const webProfileGate = read("apps/web/components/profile-completion-gate.tsx");
 const webAdminPage = read("apps/web/app/admin/page.tsx");
+const webAdminRequestsPanel = read("apps/web/app/admin/_components/admin-requests-panel.tsx");
 const webAdminHelper = read("apps/web/lib/admin.ts");
+const webTermsPage = read("apps/web/app/terms/page.tsx");
+const webPrivacyPage = read("apps/web/app/privacy/page.tsx");
+const webLegalCopy = read("apps/web/lib/legal.ts");
 const adminAuthWithoutProfile = read("supabase/migrations/20260503000000_admin_auth_without_profile.sql");
+const privacyPolicyDoc = read("docs/legal/privacy-policy.md");
 const mobileMain = read("apps/mobile/lib/main.dart");
 const mobileProfileGate = read("apps/mobile/lib/screens/profile_completion_gate.dart");
 const mobileProfileSetup = read("apps/mobile/lib/screens/profile_setup_screen.dart");
@@ -113,6 +119,21 @@ describe("Web login routing", () => {
     assert.match(webMiddleware, /isAdminEmail/);
     assert.doesNotMatch(webAdminPage, /ProfileCompletionGate|TermsAcceptanceGate/);
   });
+
+  it("links the footer and policy pages to helpdesk contact and privacy details", () => {
+    assert.match(webSiteFooter, /Contact us/);
+    assert.match(webSiteFooter, /CONTACT_EMAIL/);
+    assert.match(webSiteFooter, /Privacy Policy/);
+    assert.match(webSiteFooter, /Terms of Service/);
+    assert.match(webTermsPage, /CONTACT_EMAIL/);
+    assert.match(webTermsPage, /Privacy Policy/);
+    assert.match(webPrivacyPage, /CONTACT_EMAIL/);
+    assert.match(webPrivacyPage, /privacySections/);
+    assert.match(webLegalCopy, /privacySections/);
+    assert.match(webLegalCopy, /Authorized staff and admins may review activity records/);
+    assert.match(privacyPolicyDoc, /Internal Access and Activity Review/);
+    assert.match(privacyPolicyDoc, /helpdesk@rapidohelp\.com/);
+  });
 });
 
 describe("Supabase profile bootstrap", () => {
@@ -164,6 +185,18 @@ describe("Admin auth without profile", () => {
     assert.match(adminAuthWithoutProfile, /from auth\.users/);
     assert.match(adminAuthWithoutProfile, /lower\(email\) = 'helpdesk@rapidohelp\.com'/);
     assert.match(adminAuthWithoutProfile, /role in \('agent', 'admin'\)/);
+  });
+});
+
+describe("Admin activity visibility", () => {
+  it("surfaces support requests and a combined activity feed for staff", () => {
+    assert.match(webAdminPage, /Review jobs, support requests/);
+    assert.match(webAdminRequestsPanel, /Support inbox/);
+    assert.match(webAdminRequestsPanel, /Activity feed/);
+    assert.match(webAdminRequestsPanel, /open support requests/);
+    assert.match(webAdminRequestsPanel, /support_requests/);
+    assert.match(webAdminRequestsPanel, /support_request_comments/);
+    assert.match(webAdminRequestsPanel, /Every booking, support request, profile update/);
   });
 });
 

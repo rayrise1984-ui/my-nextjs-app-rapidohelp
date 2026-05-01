@@ -48,6 +48,68 @@ body {
   margin-bottom: 1rem;
 }
 
+.site-footer {
+  width: min(1120px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 0 0 1.5rem;
+  color: var(--shell-muted);
+}
+
+.site-footer-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.site-footer-contact-block {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.site-footer-label {
+  margin: 0;
+  color: var(--shell-text);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.site-footer-contact {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--shell-text);
+  text-decoration: none;
+  font-size: 0.96rem;
+}
+
+.site-footer-contact:hover {
+  opacity: 0.92;
+}
+
+.site-footer-contact-icon {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+
+.site-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.site-footer-links a {
+  color: var(--shell-muted);
+  text-decoration: none;
+}
+
+.site-footer-links a:hover {
+  color: var(--shell-text);
+}
+
 .public-brand {
   color: var(--shell-text);
   font-size: 1.05rem;
@@ -1202,6 +1264,15 @@ body {
   .login-links {
     justify-content: flex-start;
     margin-left: 0;
+  }
+
+  .site-footer {
+    width: min(100% - 1rem, 1120px);
+  }
+
+  .site-footer-inner {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .hero {

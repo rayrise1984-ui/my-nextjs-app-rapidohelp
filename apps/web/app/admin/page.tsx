@@ -10,7 +10,7 @@ export default function AdminPage() {
           <p className="eyebrow">Live operations</p>
           <h1>Admin control room</h1>
           <p className="lead">
-            Review jobs, approve worker access, and keep service requests moving from one protected staff workspace.
+            Review jobs, support requests, worker access, and live activity from one protected staff workspace.
           </p>
         </div>
         <p>
