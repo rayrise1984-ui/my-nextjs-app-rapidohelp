@@ -129,6 +129,10 @@ async function upsertAuthUser(client, demoUser) {
 }
 
 async function upsertDemoProfile(client, user, demoUser) {
+  if (demoUser.role === 'admin') {
+    return;
+  }
+
   const role = demoUser.role || (demoUser.isWorker ? 'agent' : 'customer');
   const serviceSets = demoUser.isWorker ? WORKER_SERVICE_SETS : [[]];
 
@@ -219,7 +223,7 @@ async function main() {
       : 'DEMO_PASSWORD';
 
     console.log(
-      `ready:${demoUser.isWorker ? 'worker' : 'customer'}:${demoUser.email} (password from ${passwordSource})`,
+      `ready:${demoUser.role === 'admin' ? 'admin' : demoUser.isWorker ? 'worker' : 'customer'}:${demoUser.email} (password from ${passwordSource})`,
     );
   }
 }

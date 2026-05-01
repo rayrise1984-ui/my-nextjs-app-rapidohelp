@@ -27,6 +27,7 @@ const migrations = [
   "supabase/migrations/20260501000000_seed_profile_metadata_on_signup.sql",
   "supabase/migrations/20260502000000_helper_background_check_consent.sql",
   "supabase/migrations/20260501163923_urbanclap_booking_spine.sql",
+  "supabase/migrations/20260503000000_admin_auth_without_profile.sql",
 ].map(read);
 
 const allMigrations = migrations.join("\n\n");
@@ -39,6 +40,9 @@ const webAuthPanel = read("apps/web/components/auth-panel.tsx");
 const webLoginLinks = read("apps/web/components/login-links.tsx");
 const webMiddleware = read("apps/web/utils/supabase/middleware.ts");
 const webProfileGate = read("apps/web/components/profile-completion-gate.tsx");
+const webAdminPage = read("apps/web/app/admin/page.tsx");
+const webAdminHelper = read("apps/web/lib/admin.ts");
+const adminAuthWithoutProfile = read("supabase/migrations/20260503000000_admin_auth_without_profile.sql");
 const mobileMain = read("apps/mobile/lib/main.dart");
 const mobileProfileGate = read("apps/mobile/lib/screens/profile_completion_gate.dart");
 const mobileProfileSetup = read("apps/mobile/lib/screens/profile_setup_screen.dart");
@@ -98,11 +102,16 @@ describe("Supabase auth and SMTP configuration", () => {
 });
 
 describe("Web login routing", () => {
-  it("routes the admin link to the sign-in form instead of the protected workspace", () => {
-    assert.match(webLoginLinks, /href: "\/auth\?mode=signin&account=admin"/);
-    assert.match(webLoginLinks, /label: "Admin Sign In"/);
-    assert.doesNotMatch(webLoginLinks, /href: "\/admin".*label: "Admin Login"/s);
-    assert.match(webAuthPanel, /helpdesk@rapidohelp\.com/);
+  it("keeps admin sign-in private and profile-free", () => {
+    assert.doesNotMatch(webLoginLinks, /Admin Sign In/);
+    assert.match(webLoginLinks, /Customer Sign Up/);
+    assert.match(webLoginLinks, /Service Partner Sign Up/);
+    assert.match(webAuthPanel, /ADMIN_LOGIN_EMAIL/);
+    assert.match(webAuthPanel, /Admin sign in\./);
+    assert.match(webAuthPanel, /No profile setup is needed\./);
+    assert.match(webAdminHelper, /helpdesk@rapidohelp\.com/);
+    assert.match(webMiddleware, /isAdminEmail/);
+    assert.doesNotMatch(webAdminPage, /ProfileCompletionGate|TermsAcceptanceGate/);
   });
 });
 
@@ -142,6 +151,19 @@ describe("Demo worker SMTP bootstrap", () => {
     assert.match(demoSeedScript, /email: process\.env\.SMTP_ADMIN_EMAIL \|\| 'helpdesk@rapidohelp\.com'/);
     assert.match(demoSeedScript, /fullName: 'Helpdesk Admin'/);
     assert.match(demoSeedScript, /role: 'admin'/);
+    assert.match(demoSeedScript, /if \(demoUser\.role === 'admin'\) {\s*return;\s*}/s);
+  });
+});
+
+describe("Admin auth without profile", () => {
+  it("lets the admin account authenticate from email alone", () => {
+    assert.match(
+      adminAuthWithoutProfile,
+      /if lower\(coalesce\(new\.email, ''\)\) = 'helpdesk@rapidohelp\.com' then/,
+    );
+    assert.match(adminAuthWithoutProfile, /from auth\.users/);
+    assert.match(adminAuthWithoutProfile, /lower\(email\) = 'helpdesk@rapidohelp\.com'/);
+    assert.match(adminAuthWithoutProfile, /role in \('agent', 'admin'\)/);
   });
 });
 

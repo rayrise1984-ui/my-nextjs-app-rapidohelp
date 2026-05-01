@@ -26,6 +26,7 @@
 
 ## Web Admin Flow
 
+- Admin sign-in uses a private ID and password and does not require a profile.
 - Customers visiting `/admin` are redirected back to `/dashboard`.
 - Staff can view all jobs and service partner profiles, including consent status.
 - Staff can approve or pause service partner access through `staff_update_worker_access` after consent is on file.

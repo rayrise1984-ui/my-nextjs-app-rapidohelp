@@ -9,13 +9,14 @@ import {
   createSupabaseBrowserClient,
   getSupabaseAuthRedirectUrl,
 } from "@/lib/supabase";
+import { ADMIN_LOGIN_EMAIL, isAdminEmail } from "@/lib/admin";
 
 const HELPER_BACKGROUND_CHECK_CONSENT_VERSION = "helper_background_check_v1";
-const ADMIN_LOGIN_EMAIL = "helpdesk@rapidohelp.com";
 
 export function AuthPanel() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const isAdminSignin = searchParams.get("account") === "admin";
   const [entryMode, setEntryMode] = useState<"create" | "signin">("create");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -57,12 +58,17 @@ export function AuthPanel() {
     const requestedMode = searchParams.get("mode");
     const requestedAccount = searchParams.get("account");
 
+    if (requestedAccount === "admin") {
+      setEntryMode("signin");
+      setAuthMode("email");
+      setEmail(ADMIN_LOGIN_EMAIL);
+      setPassword("");
+      setPhoneCodeSent(false);
+      return;
+    }
+
     if (requestedMode === "signin") {
       setEntryMode("signin");
-      if (requestedAccount === "admin") {
-        setAuthMode("email");
-        setEmail(ADMIN_LOGIN_EMAIL);
-      }
       return;
     }
 
@@ -90,6 +96,11 @@ export function AuthPanel() {
     let disposed = false;
 
     const routeSignedInUser = async () => {
+      if (isAdminEmail(session.user.email)) {
+        router.replace("/admin");
+        return;
+      }
+
       const { data } = await client
         .from("profiles")
         .select(
@@ -164,10 +175,24 @@ export function AuthPanel() {
     setError(null);
     setMessage(null);
 
+    if (isAdminSignin && email.trim().toLowerCase() !== ADMIN_LOGIN_EMAIL) {
+      setLoading(false);
+      setError(`Admin access uses ${ADMIN_LOGIN_EMAIL}.`);
+      return;
+    }
+
+    if (isAdminSignin && !password.trim()) {
+      setLoading(false);
+      setError("Enter the admin password.");
+      return;
+    }
+
+    const normalizedEmail = email.trim();
+
     const { error: authError } = password
-      ? await client.auth.signInWithPassword({ email, password })
+      ? await client.auth.signInWithPassword({ email: normalizedEmail, password })
       : await client.auth.signInWithOtp({
-          email,
+          email: normalizedEmail,
           options: {
             emailRedirectTo: getSupabaseAuthRedirectUrl(),
           },
@@ -289,15 +314,15 @@ export function AuthPanel() {
       <h1>
         {entryMode === "create"
           ? "Create your profile."
-          : searchParams.get("account") === "admin"
+          : isAdminSignin
             ? "Admin sign in."
             : "Sign in to RapidoHelp."}
       </h1>
       <p className="lead">
         {entryMode === "create"
           ? "Customer and service partner accounts start by creating a profile, then moving into the app."
-          : searchParams.get("account") === "admin"
-            ? "Use the helpdesk admin account to review service partners and manage the marketplace."
+          : isAdminSignin
+            ? "Use the private admin ID and password. Admin access does not need profile setup."
             : "Use email, password, magic link, or SMS to book help, accept jobs, or manage operations."}
       </p>
 
@@ -305,16 +330,38 @@ export function AuthPanel() {
         <p className="auth-note">Opening your workspace now.</p>
       ) : (
         <>
-          <div className="auth-actions">
-            <button disabled={entryMode === "create"} onClick={() => switchEntryMode("create")} type="button">
-              Create profile
-            </button>
-            <button disabled={entryMode === "signin"} onClick={() => switchEntryMode("signin")} type="button">
-              Sign in
-            </button>
-          </div>
-
-          {entryMode === "create" ? (
+          {isAdminSignin ? (
+            <form className="auth-form" onSubmit={submitEmail}>
+              <p className="auth-note">
+                Admin access uses <strong>{ADMIN_LOGIN_EMAIL}</strong> and a password. No profile setup is needed.
+              </p>
+              <label>
+                Admin ID / email
+                <input
+                  autoComplete="email"
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder={ADMIN_LOGIN_EMAIL}
+                  required
+                  type="email"
+                  value={email}
+                />
+              </label>
+              <label>
+                Password
+                <input
+                  autoComplete="current-password"
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Enter admin password"
+                  required
+                  type="password"
+                  value={password}
+                />
+              </label>
+              <button disabled={loading} type="submit">
+                {loading ? "Please wait..." : "Sign in to admin"}
+              </button>
+            </form>
+          ) : entryMode === "create" ? (
             <form className="auth-form" onSubmit={submitProfile}>
               <label>
                 Full name
@@ -471,7 +518,7 @@ export function AuthPanel() {
       {error ? <p className="auth-error">{error}</p> : null}
 
       <p className="auth-note">
-        Customer, service partner, and admin access all start here. Create a profile first if you are new.
+        Customer and service partner accounts start by creating a profile. Admin access uses a private ID and password.
       </p>
     </section>
   );

@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
+import { isAdminEmail } from "@/lib/admin";
 import { getSupabaseConfig } from "./config";
 
 const PUBLIC_PATHS = new Set(["/", "/auth", "/terms"]);
@@ -75,6 +76,19 @@ export async function updateSession(request: NextRequest) {
     }
 
     return redirectWithCookies(request, response, "/auth");
+  }
+
+  if (isAdminEmail(user.email)) {
+    if (
+      pathname === "/auth" ||
+      pathname === "/profile" ||
+      pathname.startsWith("/dashboard") ||
+      pathname.startsWith("/worker")
+    ) {
+      return redirectWithCookies(request, response, "/admin");
+    }
+
+    return response;
   }
 
   const { data: profile } = await supabase
