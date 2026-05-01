@@ -35,6 +35,7 @@ const latestTrustedActions = read(
 );
 const demoSeedScript = read("scripts/create-demo-users.cjs");
 const webAuthPanel = read("apps/web/components/auth-panel.tsx");
+const webLoginLinks = read("apps/web/components/login-links.tsx");
 const webMiddleware = read("apps/web/utils/supabase/middleware.ts");
 const webProfileGate = read("apps/web/components/profile-completion-gate.tsx");
 const mobileMain = read("apps/mobile/lib/main.dart");
@@ -85,6 +86,14 @@ describe("Supabase auth and SMTP configuration", () => {
     assert.match(config, /pass = "env\(SMTP_PASS\)"/);
     assert.match(config, /admin_email = "env\(SMTP_ADMIN_EMAIL\)"/);
     assert.doesNotMatch(config, /SMTP_PASS=|your-smtp-password/);
+  });
+});
+
+describe("Web login routing", () => {
+  it("routes the admin link to the sign-in form instead of the protected workspace", () => {
+    assert.match(webLoginLinks, /href: "\/auth\?mode=signin"/);
+    assert.match(webLoginLinks, /label: "Admin Sign In"/);
+    assert.doesNotMatch(webLoginLinks, /href: "\/admin".*label: "Admin Login"/s);
   });
 });
 

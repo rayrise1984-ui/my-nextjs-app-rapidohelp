@@ -3,7 +3,7 @@ import Link from "next/link";
 const loginLinks = [
   { href: "/auth?account=customer", label: "Customer Sign Up", primary: true },
   { href: "/auth?account=helper", label: "Helper Sign Up" },
-  { href: "/admin", label: "Admin Login" },
+  { href: "/auth?mode=signin", label: "Admin Sign In" },
 ];
 
 export function LoginLinks() {
