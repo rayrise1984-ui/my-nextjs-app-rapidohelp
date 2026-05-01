@@ -9,6 +9,10 @@ const withProtocol = (url: string) => {
 };
 
 export function getSiteUrl() {
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return trimTrailingSlash(window.location.origin);
+  }
+
   const configuredUrl =
     process.env.NEXT_PUBLIC_SITE_URL ??
     process.env.NEXT_PUBLIC_APP_URL ??
@@ -21,4 +25,3 @@ export function getSiteUrl() {
 
   return "http://localhost:3000";
 }
-
