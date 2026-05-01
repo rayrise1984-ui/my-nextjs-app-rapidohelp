@@ -13,6 +13,7 @@
 
 ## Web Worker Flow
 
+- A helper must consent to a background check before staff review can begin.
 - A worker must complete profile, background check, and payout account details before seeing intake.
 - A worker cannot go online or accept work until staff verification is active.
 - A verified worker can filter available jobs by selected services.
@@ -26,8 +27,8 @@
 ## Web Admin Flow
 
 - Customers visiting `/admin` are redirected back to `/dashboard`.
-- Staff can view all jobs and worker profiles.
-- Staff can approve or pause worker access through `staff_update_worker_access`.
+- Staff can view all jobs and worker profiles, including helper consent status.
+- Staff can approve or pause worker access through `staff_update_worker_access` after consent is on file.
 - Staff can update job statuses through `staff_update_job_status`.
 - Admin metrics reflect open, active, completed, worker-review, and gross-value counts.
 
@@ -46,6 +47,7 @@
 
 - The app renders the auth shell when Supabase config is missing.
 - Signed-in users must complete their profile before the dashboard or worker view opens.
+- Helpers must consent to a background check before profile completion can finish.
 - Auth UI switches between email/password and phone OTP modes.
 - Job JSON maps database fields, defaults missing payment status to `unpaid`, and calculates payout fallbacks.
 - Worker rating JSON maps all rating fields.

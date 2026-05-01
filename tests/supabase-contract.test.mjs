@@ -25,6 +25,7 @@ const migrations = [
   "supabase/migrations/20260430230843_worker_background_check_details.sql",
   "supabase/migrations/20260430235959_worker_payout_account_details.sql",
   "supabase/migrations/20260501000000_seed_profile_metadata_on_signup.sql",
+  "supabase/migrations/20260502000000_helper_background_check_consent.sql",
 ].map(read);
 
 const allMigrations = migrations.join("\n\n");
@@ -33,6 +34,13 @@ const latestTrustedActions = read(
   "supabase/migrations/20260427002000_trusted_marketplace_actions.sql",
 );
 const demoSeedScript = read("scripts/create-demo-users.cjs");
+const webAuthPanel = read("apps/web/components/auth-panel.tsx");
+const webMiddleware = read("apps/web/utils/supabase/middleware.ts");
+const webProfileGate = read("apps/web/components/profile-completion-gate.tsx");
+const mobileMain = read("apps/mobile/lib/main.dart");
+const mobileProfileGate = read("apps/mobile/lib/screens/profile_completion_gate.dart");
+const mobileProfileSetup = read("apps/mobile/lib/screens/profile_setup_screen.dart");
+const mobileWorkerSetup = read("apps/mobile/lib/screens/worker_profile_setup_screen.dart");
 const workerProgress = read(
   "supabase/migrations/20260427004000_worker_progress_and_matching.sql",
 );
@@ -45,10 +53,12 @@ const termsAcceptance = read(
 const profileBootstrap = [
   read("supabase/migrations/20260320000000_init.sql"),
   read("supabase/migrations/20260501000000_seed_profile_metadata_on_signup.sql"),
+  read("supabase/migrations/20260502000000_helper_background_check_consent.sql"),
 ].join("\n\n");
 const workerBackgroundCheck = [
   read("supabase/migrations/20260430230843_worker_background_check_details.sql"),
   read("supabase/migrations/20260430235959_worker_payout_account_details.sql"),
+  read("supabase/migrations/20260502000000_helper_background_check_consent.sql"),
 ].join("\n\n");
 
 const expectSql = (sql, pattern, message) => {
@@ -81,10 +91,16 @@ describe("Supabase auth and SMTP configuration", () => {
 describe("Supabase profile bootstrap", () => {
   it("creates a profile row from auth metadata on signup", () => {
     assert.match(profileBootstrap, /create or replace function public\.handle_new_user\(\)/);
-    assert.match(profileBootstrap, /insert into public\.profiles \(id, full_name, role, is_worker\)/);
+    expectSql(
+      profileBootstrap,
+      /insert into public\.profiles \(\s*id, full_name, role, is_worker, worker_background_check_consent_at, worker_background_check_consent_platform, worker_background_check_consent_version\s*\)/,
+    );
     assert.match(profileBootstrap, /new\.raw_user_meta_data ->> 'full_name'/);
     assert.match(profileBootstrap, /new\.raw_user_meta_data ->> 'role'/);
     assert.match(profileBootstrap, /new\.raw_user_meta_data ->> 'is_worker'/);
+    assert.match(profileBootstrap, /new\.raw_user_meta_data ->> 'worker_background_check_consent'/);
+    assert.match(profileBootstrap, /new\.raw_user_meta_data ->> 'worker_background_check_consent_platform'/);
+    assert.match(profileBootstrap, /new\.raw_user_meta_data ->> 'worker_background_check_consent_version'/);
   });
 });
 
@@ -165,6 +181,9 @@ describe("Supabase trusted marketplace actions", () => {
       "terms_version",
       "terms_acceptance_method",
       "terms_accepted_platform",
+      "worker_background_check_consent_at",
+      "worker_background_check_consent_platform",
+      "worker_background_check_consent_version",
       "worker_profile_completed",
     ]) {
       assert.match(workerBackgroundCheck, new RegExp(`new\\.${field} = old\\.${field}`));
@@ -183,6 +202,9 @@ describe("Supabase trusted marketplace actions", () => {
       "payout_account_type",
       "payout_account_last4",
       "payout_routing_last4",
+      "worker_background_check_consent_at",
+      "worker_background_check_consent_platform",
+      "worker_background_check_consent_version",
     ]) {
       assert.match(workerBackgroundCheck, new RegExp(`add column if not exists ${field}`));
     }
@@ -191,12 +213,29 @@ describe("Supabase trusted marketplace actions", () => {
     assert.match(workerBackgroundCheck, /worker_background_checks_payout_routing_last4_check/);
     assert.match(workerBackgroundCheck, /sync_worker_profile_completion_from_background_check/);
     assert.match(workerBackgroundCheck, /worker_profile_completed = worker_complete/);
+    assert.match(workerBackgroundCheck, /create or replace function public\.accept_worker_background_check_consent/);
+    assert.match(workerBackgroundCheck, /set_config\('app\.accepting_worker_background_check', 'true', true\)/);
+    assert.match(workerBackgroundCheck, /worker_background_check_consent_at = timezone\('utc'::text, now\(\)\)/);
+    assert.match(workerBackgroundCheck, /worker_background_check_consent_platform = normalized_platform/);
+    assert.match(workerBackgroundCheck, /worker_background_check_consent_version = normalized_version/);
     assert.match(workerBackgroundCheck, /is_worker_user\(check_user_id uuid default auth\.uid\(\)\)/);
+    assert.match(workerBackgroundCheck, /Background check consent is required before submitting a helper profile/);
     assert.match(workerBackgroundCheck, /worker_profile_completed = true/);
-    assert.match(workerBackgroundCheck, /drop function if exists public\.submit_worker_profile\(public\.worker_status, text, integer, public\.service_type\[\], text, text, text, text, text, text, text, text, text\)/);
     assert.match(workerBackgroundCheck, /create or replace function public\.submit_worker_profile/);
+    assert.match(workerBackgroundCheck, /p_payout_account_holder_name text/);
+    assert.match(workerBackgroundCheck, /worker_background_check_consent_at is null/);
+    assert.match(workerBackgroundCheck, /helper_consent_platform is null/);
+    assert.match(workerBackgroundCheck, /helper_consent_version is null/);
     assert.match(workerBackgroundCheck, /set_config\('app\.submitting_worker_profile', 'true', true\)/);
     assert.match(workerBackgroundCheck, /insert into public\.worker_background_checks/);
+    assert.match(workerBackgroundCheck, /create or replace function public\.staff_update_worker_access/);
+    assert.match(workerBackgroundCheck, /Worker consent is required before approval/);
+    assert.match(workerBackgroundCheck, /create or replace function public\.is_worker_user\(check_user_id uuid default auth\.uid\(\)\)/);
+    assert.match(workerBackgroundCheck, /worker_background_check_consent_at is not null/);
+    assert.match(workerBackgroundCheck, /worker_background_check_consent_platform is not null/);
+    assert.match(workerBackgroundCheck, /worker_background_check_consent_version is not null/);
+    assert.match(workerBackgroundCheck, /worker_verified = true/);
+    assert.match(workerBackgroundCheck, /worker_disabled = false/);
   });
 
   it("records terms acceptance with server-side timestamp and version", () => {
@@ -234,6 +273,26 @@ describe("Supabase trusted marketplace actions", () => {
     assert.match(workerProgress, /from public\.calculate_marketplace_payout/);
   });
 
+  it("requires helper background-check consent before signup and profile completion", () => {
+    assert.match(webAuthPanel, /worker_background_check_consent/);
+    assert.match(webAuthPanel, /consent to a background check/);
+    assert.match(webAuthPanel, /worker_verified/);
+    assert.match(webAuthPanel, /worker_disabled/);
+    assert.match(webMiddleware, /worker_verified/);
+    assert.match(webMiddleware, /worker_disabled/);
+    assert.match(webProfileGate, /accept_worker_background_check_consent/);
+    assert.match(webProfileGate, /worker_background_check_consent_version/);
+    assert.match(webProfileGate, /worker_verified/);
+    assert.match(webProfileGate, /worker_disabled/);
+    assert.match(mobileMain, /worker_background_check_consent/);
+    assert.match(mobileMain, /consent to a background check/);
+    assert.match(mobileProfileGate, /worker_background_check_consent_version/);
+    assert.match(mobileProfileGate, /worker_verified/);
+    assert.match(mobileProfileGate, /worker_disabled/);
+    assert.match(mobileProfileSetup, /accept_worker_background_check_consent/);
+    assert.match(mobileWorkerSetup, /accept_worker_background_check_consent/);
+  });
+
   it("covers customer cancellation, payment, and rating RPCs", () => {
     const cancellation = read("supabase/migrations/20260427003000_customer_job_cancellation.sql");
     assert.match(cancellation, /create or replace function public\.cancel_job\(p_job_id uuid\)/);
@@ -261,6 +320,7 @@ describe("Supabase trusted marketplace actions", () => {
       "cancel_worker_job\\(uuid\\)",
       "cancel_job\\(uuid\\)",
       "staff_update_worker_access\\(uuid, boolean, boolean\\)",
+      "accept_worker_background_check_consent\\(text, text\\)",
       "accept_terms\\(text, text\\)",
       "submit_worker_profile\\(public\\.worker_status, text, integer, public\\.service_type\\[\\], text, text, text, text, text, text, text, text, text, text, text, text, text, text\\)",
     ]) {

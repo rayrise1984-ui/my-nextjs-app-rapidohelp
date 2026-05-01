@@ -10,6 +10,8 @@ import {
   getSupabaseAuthRedirectUrl,
 } from "@/lib/supabase";
 
+const HELPER_BACKGROUND_CHECK_CONSENT_VERSION = "helper_background_check_v1";
+
 export function AuthPanel() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -18,6 +20,7 @@ export function AuthPanel() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [accountType, setAccountType] = useState<"customer" | "helper">("customer");
+  const [helperBackgroundCheckConsent, setHelperBackgroundCheckConsent] = useState(false);
   const [phone, setPhone] = useState("");
   const [phoneCode, setPhoneCode] = useState("");
   const [authMode, setAuthMode] = useState<"email" | "phone">("email");
@@ -84,7 +87,9 @@ export function AuthPanel() {
     const routeSignedInUser = async () => {
       const { data } = await client
         .from("profiles")
-        .select("full_name, role, is_worker")
+        .select(
+          "full_name, role, is_worker, worker_verified, worker_disabled, worker_background_check_consent_at, worker_background_check_consent_platform, worker_background_check_consent_version",
+        )
         .eq("id", session.user.id)
         .maybeSingle();
 
@@ -94,9 +99,19 @@ export function AuthPanel() {
 
       const role = data?.role as string | null | undefined;
       const isWorker = Boolean(data?.is_worker);
+      const workerApproved = !isWorker || (Boolean(data?.worker_verified) && !Boolean(data?.worker_disabled));
       const hasProfile = Boolean((data?.full_name ?? "").trim());
+      const helperConsentSatisfied =
+        !isWorker ||
+        Boolean(
+          data?.worker_background_check_consent_at &&
+            data?.worker_background_check_consent_platform &&
+            data?.worker_background_check_consent_version === HELPER_BACKGROUND_CHECK_CONSENT_VERSION,
+        );
       const destination = !hasProfile
         ? "/profile"
+        : !helperConsentSatisfied || !workerApproved
+          ? "/profile"
         : role === "admin"
           ? "/admin"
           : role === "agent" || isWorker
@@ -174,6 +189,12 @@ export function AuthPanel() {
       return;
     }
 
+    if (accountType === "helper" && !helperBackgroundCheckConsent) {
+      setError("Helpers must consent to a background check before creating a profile.");
+      setMessage(null);
+      return;
+    }
+
     const client = createSupabaseBrowserClient();
 
     if (!client) {
@@ -196,6 +217,10 @@ export function AuthPanel() {
           full_name: trimmedFullName,
           role: accountType === "helper" ? "agent" : "customer",
           is_worker: accountType === "helper",
+          worker_background_check_consent: accountType === "helper" && helperBackgroundCheckConsent,
+          worker_background_check_consent_platform: accountType === "helper" ? "web" : null,
+          worker_background_check_consent_version:
+            accountType === "helper" ? HELPER_BACKGROUND_CHECK_CONSENT_VERSION : null,
         },
       },
     });
@@ -294,20 +319,37 @@ export function AuthPanel() {
                 <div className="auth-actions">
                   <button
                     disabled={accountType === "customer"}
-                    onClick={() => setAccountType("customer")}
+                    onClick={() => {
+                      setAccountType("customer");
+                      setHelperBackgroundCheckConsent(false);
+                    }}
                     type="button"
                   >
                     Customer
                   </button>
                   <button
                     disabled={accountType === "helper"}
-                    onClick={() => setAccountType("helper")}
+                    onClick={() => {
+                      setAccountType("helper");
+                    }}
                     type="button"
                   >
                     Helper
                   </button>
                 </div>
               </fieldset>
+              {accountType === "helper" ? (
+                <label className="terms-checkbox">
+                  <input
+                    checked={helperBackgroundCheckConsent}
+                    onChange={(event) => setHelperBackgroundCheckConsent(event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>
+                    I consent to a background check so RapidoHelp can review my helper profile for approval.
+                  </span>
+                </label>
+              ) : null}
               <label>
                 Email address
                 <input

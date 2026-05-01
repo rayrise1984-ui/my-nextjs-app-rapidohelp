@@ -17,6 +17,8 @@ import {
 } from "@/lib/marketplace";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 
+const HELPER_BACKGROUND_CHECK_CONSENT_VERSION = "helper_background_check_v1";
+
 type AdminWorkerProfile = {
   id: string;
   full_name: string | null;
@@ -31,6 +33,9 @@ type AdminWorkerProfile = {
   worker_profile_completed: boolean | null;
   worker_verified: boolean | null;
   worker_disabled: boolean | null;
+  worker_background_check_consent_at: string | null;
+  worker_background_check_consent_platform: string | null;
+  worker_background_check_consent_version: string | null;
   service_types: ServiceType[] | null;
   updated_at: string | null;
 };
@@ -75,10 +80,19 @@ const normalizeWorker = (worker: AdminWorkerProfile): AdminWorkerProfile => ({
   worker_rating_count: worker.worker_rating_count ?? 0,
 });
 
+const workerHasCurrentConsent = (worker: AdminWorkerProfile) =>
+  Boolean(
+    worker.worker_background_check_consent_at &&
+      worker.worker_background_check_consent_platform &&
+      worker.worker_background_check_consent_version === HELPER_BACKGROUND_CHECK_CONSENT_VERSION,
+  );
+
 const workerQueueRank = (worker: AdminWorkerProfile) => {
-  if (worker.worker_disabled) return 2;
-  if (worker.worker_profile_completed && !worker.worker_verified) return 0;
-  return 1;
+  if (worker.worker_disabled) return 3;
+  if (!worker.worker_profile_completed) return 1;
+  if (worker.worker_profile_completed && !workerHasCurrentConsent(worker)) return 0;
+  if (worker.worker_profile_completed && !worker.worker_verified) return 1;
+  return 2;
 };
 
 const sortWorkers = (workers: AdminWorkerProfile[]) =>
@@ -93,6 +107,7 @@ const sortWorkers = (workers: AdminWorkerProfile[]) =>
 const workerReviewLabel = (worker: AdminWorkerProfile) => {
   if (worker.worker_disabled) return "Paused";
   if (!worker.worker_profile_completed) return "Profile incomplete";
+  if (!workerHasCurrentConsent(worker)) return "Consent required";
   if (!worker.worker_verified) return "Pending review";
   return "Approved";
 };
@@ -100,6 +115,7 @@ const workerReviewLabel = (worker: AdminWorkerProfile) => {
 const workerReviewColor = (worker: AdminWorkerProfile) => {
   if (worker.worker_disabled) return "#8A1C0F";
   if (!worker.worker_profile_completed) return "#999999";
+  if (!workerHasCurrentConsent(worker)) return "#8C4B00";
   if (!worker.worker_verified) return "#C77800";
   return "#2E7D32";
 };
@@ -175,7 +191,7 @@ export function AdminRequestsPanel() {
         client
           .from("profiles")
           .select(
-            "id, full_name, role, is_worker, worker_status, worker_work_details, worker_experience_years, worker_rating_avg, worker_rating_count, total_earnings, worker_profile_completed, worker_verified, worker_disabled, service_types, updated_at",
+            "id, full_name, role, is_worker, worker_status, worker_work_details, worker_experience_years, worker_rating_avg, worker_rating_count, total_earnings, worker_profile_completed, worker_verified, worker_disabled, worker_background_check_consent_at, worker_background_check_consent_platform, worker_background_check_consent_version, service_types, updated_at",
           )
           .eq("is_worker", true)
           .order("updated_at", { ascending: false }),
@@ -336,8 +352,11 @@ export function AdminRequestsPanel() {
   const metrics = useMemo(() => {
     const completedJobs = jobs.filter((job) => job.status === "completed");
     const gross = completedJobs.reduce((sum, job) => sum + Number(job.final_price ?? job.estimated_price ?? 0), 0);
+    const pendingWorkerConsent = workers.filter(
+      (worker) => worker.worker_profile_completed && !workerHasCurrentConsent(worker) && !worker.worker_disabled,
+    ).length;
     const pendingWorkerReviews = workers.filter(
-      (worker) => worker.worker_profile_completed && !worker.worker_verified && !worker.worker_disabled,
+      (worker) => worker.worker_profile_completed && workerHasCurrentConsent(worker) && !worker.worker_verified && !worker.worker_disabled,
     ).length;
     const approvedWorkers = workers.filter((worker) => worker.worker_verified && !worker.worker_disabled).length;
     const pausedWorkers = workers.filter((worker) => worker.worker_disabled).length;
@@ -350,6 +369,7 @@ export function AdminRequestsPanel() {
       active: jobs.filter((job) => job.status === "accepted" || job.status === "in_progress").length,
       completed: completedJobs.length,
       gross,
+      pendingWorkerConsent,
       pendingWorkerReviews,
       approvedWorkers,
       pausedWorkers,
@@ -484,6 +504,11 @@ export function AdminRequestsPanel() {
                     <div className="request-meta">
                       <span className="pill muted">
                         {worker.worker_profile_completed ? "Profile complete" : "Profile incomplete"}
+                      </span>
+                      <span className="pill muted">
+                        Consent: {workerHasCurrentConsent(worker)
+                          ? `on file via ${worker.worker_background_check_consent_platform}`
+                          : "required"}
                       </span>
                       <span className="pill muted">
                         Background: {backgroundCheck?.status?.replaceAll("_", " ") ?? "not submitted"}
@@ -633,6 +658,7 @@ export function AdminRequestsPanel() {
             <span className="pill muted">{metrics.onlineWorkers} workers online</span>
           </div>
           <div className="request-meta">
+            <span className="pill muted">{metrics.pendingWorkerConsent} waiting on consent</span>
             <span className="pill muted">{metrics.pendingWorkerReviews} pending reviews</span>
             <span className="pill muted">{metrics.approvedWorkers} approved workers</span>
             <span className="pill muted">{metrics.pausedWorkers} paused workers</span>

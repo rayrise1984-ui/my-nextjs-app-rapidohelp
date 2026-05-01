@@ -52,6 +52,8 @@ const DEMO_USERS = [
   },
 ];
 
+const WORKER_BACKGROUND_CHECK_CONSENT_VERSION = 'helper_background_check_v1';
+
 function loadEnvFile(envPath) {
   if (!fs.existsSync(envPath)) return;
 
@@ -87,6 +89,11 @@ async function upsertAuthUser(client, demoUser) {
         full_name: demoUser.fullName,
         role: demoUser.isWorker ? 'agent' : 'customer',
         is_worker: demoUser.isWorker,
+        worker_background_check_consent: demoUser.isWorker,
+        worker_background_check_consent_platform: demoUser.isWorker ? 'web' : null,
+        worker_background_check_consent_version: demoUser.isWorker
+          ? WORKER_BACKGROUND_CHECK_CONSENT_VERSION
+          : null,
       },
     });
     if (error) throw error;
@@ -101,6 +108,11 @@ async function upsertAuthUser(client, demoUser) {
       full_name: demoUser.fullName,
       role: demoUser.isWorker ? 'agent' : 'customer',
       is_worker: demoUser.isWorker,
+      worker_background_check_consent: demoUser.isWorker,
+      worker_background_check_consent_platform: demoUser.isWorker ? 'web' : null,
+      worker_background_check_consent_version: demoUser.isWorker
+        ? WORKER_BACKGROUND_CHECK_CONSENT_VERSION
+        : null,
     },
   });
   if (error) throw error;
@@ -116,6 +128,11 @@ async function upsertDemoProfile(client, user, demoUser) {
       full_name: demoUser.fullName,
       role: demoUser.isWorker ? 'agent' : 'customer',
       is_worker: demoUser.isWorker,
+      worker_background_check_consent_at: demoUser.isWorker ? new Date().toISOString() : null,
+      worker_background_check_consent_platform: demoUser.isWorker ? 'web' : null,
+      worker_background_check_consent_version: demoUser.isWorker
+        ? WORKER_BACKGROUND_CHECK_CONSENT_VERSION
+        : null,
       worker_status: demoUser.isWorker ? 'online' : 'offline',
       service_types: serviceTypes,
       worker_work_details: demoUser.isWorker

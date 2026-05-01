@@ -338,6 +338,7 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _submitting = false;
   bool _createProfileMode = true;
   bool _helperAccount = false;
+  bool _helperBackgroundCheckConsent = false;
   bool _phoneCodeSent = false;
   bool _usePhoneLogin = false;
   String? _message;
@@ -501,6 +502,12 @@ class _AuthScreenState extends State<AuthScreen> {
           'full_name': fullName,
           'role': _helperAccount ? 'agent' : 'customer',
           'is_worker': _helperAccount,
+          'worker_background_check_consent':
+              _helperAccount && _helperBackgroundCheckConsent,
+          'worker_background_check_consent_platform':
+              _helperAccount ? 'mobile' : null,
+          'worker_background_check_consent_version':
+              _helperAccount ? helperBackgroundCheckConsentVersion : null,
         },
       );
 
@@ -754,14 +761,35 @@ class _AuthScreenState extends State<AuthScreen> {
                         onSelectionChanged: _submitting
                             ? null
                             : (selection) {
-                                setState(() {
-                                  _helperAccount = selection.first;
-                                  _error = null;
-                                  _message = null;
-                                });
-                              },
+                              setState(() {
+                                _helperAccount = selection.first;
+                                if (!_helperAccount) {
+                                  _helperBackgroundCheckConsent = false;
+                                }
+                                _error = null;
+                                _message = null;
+                              });
+                            },
                       ),
                       const SizedBox(height: 16),
+                      if (_helperAccount) ...[
+                        CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          value: _helperBackgroundCheckConsent,
+                          onChanged: _submitting
+                              ? null
+                              : (value) {
+                                  setState(() {
+                                    _helperBackgroundCheckConsent = value ?? false;
+                                  });
+                                },
+                          title: const Text(
+                            'I consent to a background check so RapidoHelp can review my helper profile for approval.',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
                       TextField(
                         controller: _emailController,
                         keyboardType: TextInputType.emailAddress,

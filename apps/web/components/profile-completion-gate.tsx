@@ -7,11 +7,18 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 
+const HELPER_BACKGROUND_CHECK_CONSENT_VERSION = "helper_background_check_v1";
+
 type ProfileRow = {
   full_name: string | null;
   avatar_url: string | null;
   role: string | null;
   is_worker: boolean | null;
+  worker_verified: boolean | null;
+  worker_disabled: boolean | null;
+  worker_background_check_consent_at: string | null;
+  worker_background_check_consent_platform: string | null;
+  worker_background_check_consent_version: string | null;
 };
 
 type ProfileCompletionGateProps = {
@@ -26,6 +33,10 @@ export function ProfileCompletionGate({ children }: ProfileCompletionGateProps) 
   const [fullName, setFullName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [workspacePath, setWorkspacePath] = useState("/dashboard");
+  const [isWorker, setIsWorker] = useState(false);
+  const [needsHelperConsent, setNeedsHelperConsent] = useState(false);
+  const [needsWorkerApproval, setNeedsWorkerApproval] = useState(false);
+  const [helperBackgroundCheckConsent, setHelperBackgroundCheckConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsAuth, setNeedsAuth] = useState(false);
@@ -65,7 +76,9 @@ export function ProfileCompletionGate({ children }: ProfileCompletionGateProps) 
 
       const { data, error: profileError } = await client
         .from("profiles")
-        .select("full_name, avatar_url, role, is_worker")
+        .select(
+          "full_name, avatar_url, role, is_worker, worker_verified, worker_disabled, worker_background_check_consent_at, worker_background_check_consent_platform, worker_background_check_consent_version",
+        )
         .eq("id", userId)
         .maybeSingle();
 
@@ -79,10 +92,23 @@ export function ProfileCompletionGate({ children }: ProfileCompletionGateProps) 
       } else {
         const profile = data as ProfileRow | null;
         const nextFullName = profile?.full_name?.trim() ?? "";
+        const nextIsWorker = Boolean(profile?.is_worker);
+        const approvalSatisfied = !nextIsWorker || (Boolean(profile?.worker_verified) && !Boolean(profile?.worker_disabled));
+        const consentSatisfied =
+          !nextIsWorker ||
+          Boolean(
+            profile?.worker_background_check_consent_at &&
+              profile?.worker_background_check_consent_platform &&
+              profile?.worker_background_check_consent_version === HELPER_BACKGROUND_CHECK_CONSENT_VERSION,
+          );
         setFullName(nextFullName);
         setAvatarUrl(profile?.avatar_url ?? "");
         setWorkspacePath(getWorkspacePath(profile?.role, Boolean(profile?.is_worker)));
-        setCompleted(nextFullName.length > 0);
+        setIsWorker(nextIsWorker);
+        setNeedsHelperConsent(nextIsWorker && !consentSatisfied);
+        setNeedsWorkerApproval(nextIsWorker && consentSatisfied && !approvalSatisfied);
+        setHelperBackgroundCheckConsent(consentSatisfied);
+        setCompleted(nextFullName.length > 0 && consentSatisfied && approvalSatisfied);
       }
 
       setLoading(false);
@@ -111,6 +137,11 @@ export function ProfileCompletionGate({ children }: ProfileCompletionGateProps) 
       return;
     }
 
+    if (isWorker && needsHelperConsent && !helperBackgroundCheckConsent) {
+      setError("Helpers must consent to a background check before continuing.");
+      return;
+    }
+
     const client = createSupabaseBrowserClient();
     if (!client) {
       setError("Live profile services are not available yet. Please try again shortly.");
@@ -119,6 +150,19 @@ export function ProfileCompletionGate({ children }: ProfileCompletionGateProps) 
 
     setSubmitting(true);
     setError(null);
+
+    if (isWorker && needsHelperConsent) {
+      const { error: consentError } = await client.rpc("accept_worker_background_check_consent", {
+        p_platform: "web",
+        p_consent_version: HELPER_BACKGROUND_CHECK_CONSENT_VERSION,
+      });
+
+      if (consentError) {
+        setSubmitting(false);
+        setError(consentError.message);
+        return;
+      }
+    }
 
     const { data: sessionData } = await client.auth.getSession();
     const userId = sessionData.session?.user.id;
@@ -190,6 +234,11 @@ export function ProfileCompletionGate({ children }: ProfileCompletionGateProps) 
         <p className="dashboard-note">
           You need a completed profile before you can use RapidoHelp.
         </p>
+        {needsWorkerApproval ? (
+          <p className="dashboard-note">
+            Your helper profile is waiting for staff approval. We will open your workspace once the review is finished.
+          </p>
+        ) : null}
 
         <form className="dashboard-form" onSubmit={saveProfile}>
           <label>
@@ -214,6 +263,19 @@ export function ProfileCompletionGate({ children }: ProfileCompletionGateProps) 
               value={avatarUrl}
             />
           </label>
+
+          {isWorker && needsHelperConsent ? (
+            <label className="terms-checkbox">
+              <input
+                checked={helperBackgroundCheckConsent}
+                onChange={(event) => setHelperBackgroundCheckConsent(event.target.checked)}
+                type="checkbox"
+              />
+              <span>
+                I consent to a background check so RapidoHelp can review my helper profile for approval.
+              </span>
+            </label>
+          ) : null}
 
           <div className="dashboard-actions">
             <button disabled={submitting} type="submit">

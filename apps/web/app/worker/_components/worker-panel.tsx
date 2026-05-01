@@ -25,6 +25,8 @@ const LOCATION_ZONES = {
   south: { name: "South (38.270, -122.286)", lat: 38.270, lng: -122.286 },
 };
 
+const HELPER_BACKGROUND_CHECK_CONSENT_VERSION = "helper_background_check_v1";
+
 const SERVICE_TYPES = bookableServiceTypes;
 
 type WorkerBackgroundCheck = {
@@ -232,6 +234,8 @@ export function WorkerPanel() {
   const [serviceTypesInput, setServiceTypesInput] = useState<ServiceType[]>([]);
   const [backgroundCheck, setBackgroundCheck] = useState<WorkerBackgroundCheck | null>(null);
   const [backgroundInputs, setBackgroundInputs] = useState<BackgroundCheckInputs>(emptyBackgroundCheckInputs);
+  const [workerConsentOnFile, setWorkerConsentOnFile] = useState(false);
+  const [workerConsentChecked, setWorkerConsentChecked] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [feedServiceFilter, setFeedServiceFilter] = useState<"all" | ServiceType>("all");
@@ -253,12 +257,17 @@ export function WorkerPanel() {
     const details = (profile.worker_work_details ?? "").trim();
     const hasYears = typeof profile.worker_experience_years === "number" && profile.worker_experience_years >= 0;
     const serviceTypes = profile.service_types ?? [];
+    const hasConsent =
+      Boolean(profile.worker_background_check_consent_at) &&
+      Boolean(profile.worker_background_check_consent_platform) &&
+      profile.worker_background_check_consent_version === HELPER_BACKGROUND_CHECK_CONSENT_VERSION;
     return Boolean(
       profile.is_worker &&
       profile.worker_profile_completed &&
       details.length >= 10 &&
       hasYears &&
       serviceTypes.length > 0 &&
+      hasConsent &&
       backgroundCheckIsSubmitted(check),
     );
   };
@@ -275,6 +284,14 @@ export function WorkerPanel() {
     setWorkerStatusInput(nextProfile.worker_status ?? "offline");
     setWorkDetailsInput(nextProfile.worker_work_details ?? "");
     setServiceTypesInput(nextProfile.service_types ?? []);
+    const nextHasConsent =
+      Boolean(
+        nextProfile.worker_background_check_consent_at &&
+          nextProfile.worker_background_check_consent_platform &&
+          nextProfile.worker_background_check_consent_version === HELPER_BACKGROUND_CHECK_CONSENT_VERSION,
+      );
+    setWorkerConsentOnFile(nextHasConsent);
+    setWorkerConsentChecked(nextHasConsent);
     setExperienceYearsInput(
       typeof nextProfile.worker_experience_years === "number"
         ? String(nextProfile.worker_experience_years)
@@ -294,6 +311,7 @@ export function WorkerPanel() {
   const workerVerified = workerProfile?.worker_verified ?? false;
   const workerDisabled = workerProfile?.worker_disabled ?? false;
   const workerCanAcceptNewJobs = workerProfileComplete && workerVerified && !workerDisabled;
+  const workerNeedsConsent = Boolean(workerProfile?.is_worker && !workerConsentOnFile);
 
   useEffect(() => {
     const client = createSupabaseBrowserClient();
@@ -767,6 +785,11 @@ export function WorkerPanel() {
       return;
     }
 
+    if (workerNeedsConsent && !workerConsentChecked) {
+      setError("Helpers must consent to a background check before saving the profile.");
+      return;
+    }
+
     const client = createSupabaseBrowserClient();
     if (!client) return;
 
@@ -775,6 +798,21 @@ export function WorkerPanel() {
     setMessage(null);
 
     try {
+      if (workerNeedsConsent) {
+        const { data: consentData, error: consentError } = await client.rpc(
+          "accept_worker_background_check_consent",
+          {
+            p_platform: "web",
+            p_consent_version: HELPER_BACKGROUND_CHECK_CONSENT_VERSION,
+          },
+        );
+
+        if (consentError) throw consentError;
+        if (consentData) {
+          syncWorkerProfileState(consentData as WorkerProfile);
+        }
+      }
+
       const resolvedStatus = workerCanAcceptNewJobs ? workerStatusInput : "offline";
       const { data: updatedProfile, error: saveError } = await client.rpc("submit_worker_profile", {
         p_worker_status: resolvedStatus,
@@ -845,6 +883,33 @@ export function WorkerPanel() {
           Share your services, experience, background check details, and payout account information before accepting jobs.
         </p>
       )}
+      {workerNeedsConsent ? (
+        <label
+          style={{
+            alignItems: "flex-start",
+            border: "1px solid #ddd",
+            borderRadius: "8px",
+            display: "flex",
+            gap: "10px",
+            padding: "12px",
+          }}
+        >
+          <input
+            checked={workerConsentChecked}
+            disabled={savingProfile}
+            onChange={(event) => setWorkerConsentChecked(event.target.checked)}
+            type="checkbox"
+            style={{ marginTop: "4px" }}
+          />
+          <span style={{ lineHeight: 1.5 }}>
+            I consent to a background check so RapidoHelp can review my helper profile for approval.
+          </span>
+        </label>
+      ) : workerConsentOnFile ? (
+        <p style={{ margin: 0, color: "#2E7D32", fontSize: "13px" }}>
+          Background check consent is already on file.
+        </p>
+      ) : null}
 
       {error && (
         <div style={{ color: "#8A1C0F", padding: "12px", backgroundColor: "#f5f5f5", borderRadius: "4px" }}>
@@ -1310,6 +1375,12 @@ export function WorkerPanel() {
           Background check: {backgroundCheck?.status?.replaceAll("_", " ") ?? "not submitted"}
           {backgroundCheck?.ssn_last4 ? ` · SSN last 4 ending ${backgroundCheck.ssn_last4}` : ""}
         </p>
+        <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#666" }}>
+          Consent: {workerConsentOnFile ? "on file" : "pending helper consent"}
+          {workerProfile?.worker_background_check_consent_platform
+            ? ` · ${workerProfile.worker_background_check_consent_platform}`
+            : ""}
+        </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "12px" }}>
           <span className="pill muted">Total earnings: ${totalEarnings.toFixed(2)}</span>
           <span className="pill muted">Pending payout: ${pendingPayout.toFixed(2)}</span>
@@ -1341,7 +1412,22 @@ export function WorkerPanel() {
 
       {workerDisabled && (
         <div style={{ marginBottom: "16px", padding: "14px 16px", backgroundColor: "#FFF1EF", border: "1px solid #E2A39A", borderRadius: "8px", color: "#8A1C0F" }}>
-          Your worker access is currently paused by staff. Active jobs remain visible here, but you cannot take new work right now.
+          Your worker access is currently paused by staff. Review your history here and contact support if you need to restore access.
+        </div>
+      )}
+
+      {!workerCanAcceptNewJobs && !workerDisabled && (
+        <div
+          style={{
+            marginBottom: "16px",
+            padding: "14px 16px",
+            backgroundColor: "#FFF5E8",
+            border: "1px solid #F0C78A",
+            borderRadius: "8px",
+            color: "#8A5A00",
+          }}
+        >
+          Your helper profile is complete and waiting for staff approval. You can review earnings and work history while we finish the background review.
         </div>
       )}
 
@@ -1356,7 +1442,7 @@ export function WorkerPanel() {
       {message && <div style={{ color: "#1B5E20", padding: "12px", backgroundColor: "#f5f5f5", borderRadius: "4px", marginBottom: "16px" }}>{message}</div>}
 
       {/* Accepted jobs */}
-      {acceptedJobs.length > 0 && (
+      {workerCanAcceptNewJobs && acceptedJobs.length > 0 && (
         <div style={{ marginBottom: "32px" }}>
           <h2 style={{ marginBottom: "12px" }}>Active jobs ({acceptedJobs.length})</h2>
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -1568,6 +1654,7 @@ export function WorkerPanel() {
       </div>
 
       {/* Pending jobs */}
+      {workerCanAcceptNewJobs ? (
       <div>
         <h2 style={{ marginBottom: "12px" }}>
           Available jobs <span style={{ color: "#666", fontSize: "14px" }}>({visiblePendingJobs.length})</span>
@@ -1644,6 +1731,7 @@ export function WorkerPanel() {
           </div>
         )}
       </div>
+      ) : null}
     </div>
   );
 }

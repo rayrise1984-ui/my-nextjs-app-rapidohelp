@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/service_visuals.dart';
 
+const helperBackgroundCheckConsentVersion = 'helper_background_check_v1';
+
 class WorkerProfileSetupScreen extends StatefulWidget {
   final String userId;
   const WorkerProfileSetupScreen({super.key, required this.userId});
@@ -31,6 +33,8 @@ class _WorkerProfileSetupScreenState extends State<WorkerProfileSetupScreen> {
   String? _payoutAccountType;
   String? _payoutAccountLast4;
   String? _payoutRoutingLast4;
+  bool _needsWorkerConsent = false;
+  bool _workerBackgroundCheckConsent = false;
   bool _submitting = false;
   String? _error;
 
@@ -43,12 +47,19 @@ class _WorkerProfileSetupScreenState extends State<WorkerProfileSetupScreen> {
   Future<void> _loadProfile() async {
     final row = await Supabase.instance.client
         .from('profiles')
-        .select('full_name, worker_status, worker_work_details, worker_experience_years, service_types')
+        .select(
+          'full_name, worker_status, worker_work_details, worker_experience_years, service_types, worker_background_check_consent_at, worker_background_check_consent_platform, worker_background_check_consent_version',
+        )
         .eq('id', widget.userId)
         .maybeSingle();
     if (!mounted) return;
     final profileFullName = row?['full_name'] as String?;
     if (row != null) {
+      final consentSatisfied =
+          (row['worker_background_check_consent_at'] as String?) != null &&
+              (row['worker_background_check_consent_platform'] as String?) != null &&
+              (row['worker_background_check_consent_version'] as String?) ==
+                  helperBackgroundCheckConsentVersion;
       final rowStatus = row['worker_status'] as String?;
       setState(() {
         _status = rowStatus == 'on_job' ? 'offline' : rowStatus;
@@ -56,6 +67,8 @@ class _WorkerProfileSetupScreenState extends State<WorkerProfileSetupScreen> {
         _experienceYears = row['worker_experience_years'] as int?;
         _serviceTypes = List<String>.from((row['service_types'] as List?) ?? const []);
         _payoutAccountHolderName = profileFullName;
+        _needsWorkerConsent = !consentSatisfied;
+        _workerBackgroundCheckConsent = consentSatisfied;
       });
     }
 
@@ -96,11 +109,29 @@ class _WorkerProfileSetupScreenState extends State<WorkerProfileSetupScreen> {
       });
       return;
     }
+    if (_needsWorkerConsent && !_workerBackgroundCheckConsent) {
+      setState(() {
+        _error = 'Helpers must consent to a background check before saving the profile.';
+      });
+      return;
+    }
     setState(() {
       _submitting = true;
       _error = null;
     });
     try {
+      final client = Supabase.instance.client;
+
+      if (_needsWorkerConsent) {
+        await client.rpc(
+          'accept_worker_background_check_consent',
+          params: {
+            'p_platform': 'mobile',
+            'p_consent_version': helperBackgroundCheckConsentVersion,
+          },
+        );
+      }
+
       await Supabase.instance.client.rpc(
         'submit_worker_profile',
         params: {
@@ -154,6 +185,24 @@ class _WorkerProfileSetupScreenState extends State<WorkerProfileSetupScreen> {
                 style: TextStyle(fontSize: 16),
               ),
               const SizedBox(height: 24),
+              if (_needsWorkerConsent) ...[
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  value: _workerBackgroundCheckConsent,
+                  onChanged: _submitting
+                      ? null
+                      : (value) {
+                          setState(() {
+                            _workerBackgroundCheckConsent = value ?? false;
+                          });
+                        },
+                  title: const Text(
+                    'I consent to a background check so RapidoHelp can review my helper profile for approval.',
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
               DropdownButtonFormField<String>(
                 value: _status,
                 decoration: const InputDecoration(

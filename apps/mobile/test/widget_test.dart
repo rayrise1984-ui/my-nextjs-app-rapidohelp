@@ -26,4 +26,18 @@ void main() {
     expect(find.text('Phone number'), findsOneWidget);
     expect(find.text('Send SMS code'), findsOneWidget);
   });
+
+  testWidgets('Helper profile signup shows background check consent', (tester) async {
+    await tester.pumpWidget(const RapidoHelpApp());
+
+    await tester.tap(find.text('Helper'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'I consent to a background check so RapidoHelp can review my helper profile for approval.',
+      ),
+      findsOneWidget,
+    );
+  });
 }

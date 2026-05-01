@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'profile_setup_screen.dart';
 
+const helperBackgroundCheckConsentVersion = 'helper_background_check_v1';
+
 class ProfileCompletionGate extends StatefulWidget {
   final Session session;
   final Widget child;
@@ -45,13 +47,24 @@ class _ProfileCompletionGateState extends State<ProfileCompletionGate> {
     try {
       final row = await Supabase.instance.client
           .from('profiles')
-          .select('full_name')
+          .select(
+            'full_name, is_worker, worker_verified, worker_disabled, worker_background_check_consent_at, worker_background_check_consent_platform, worker_background_check_consent_version',
+          )
           .eq('id', widget.session.user.id)
           .maybeSingle();
 
       if (!mounted) return;
+      final isWorker = (row?['is_worker'] as bool?) ?? false;
+      final approvalSatisfied =
+          !isWorker || ((row?['worker_verified'] as bool?) ?? false) && !((row?['worker_disabled'] as bool?) ?? false);
+      final consentSatisfied = !isWorker ||
+          ((row?['worker_background_check_consent_at'] as String?) != null &&
+              (row?['worker_background_check_consent_platform'] as String?) != null &&
+              (row?['worker_background_check_consent_version'] as String?) ==
+                  helperBackgroundCheckConsentVersion);
       setState(() {
-        _completed = ((row?['full_name'] as String?) ?? '').trim().isNotEmpty;
+        _completed =
+            ((row?['full_name'] as String?) ?? '').trim().isNotEmpty && consentSatisfied && approvalSatisfied;
         _loading = false;
       });
     } catch (error) {

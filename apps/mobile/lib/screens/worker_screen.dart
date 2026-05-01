@@ -5,6 +5,8 @@ import '../core/service_visuals.dart';
 import '../models/support_models.dart';
 import 'worker_profile_setup_screen.dart';
 
+const helperBackgroundCheckConsentVersion = 'helper_background_check_v1';
+
 bool _isFilledValue(Object? value) => value != null && value.toString().trim().isNotEmpty;
 
 bool _isTwoLetterStateCode(Object? value) {
@@ -81,7 +83,9 @@ class _WorkerScreenState extends State<WorkerScreen> {
     }
     final row = await Supabase.instance.client
         .from('profiles')
-        .select('worker_status, worker_work_details, worker_experience_years, worker_profile_completed, service_types, total_earnings')
+        .select(
+          'worker_status, worker_work_details, worker_experience_years, worker_profile_completed, service_types, total_earnings, worker_verified, worker_disabled, worker_background_check_consent_at, worker_background_check_consent_platform, worker_background_check_consent_version',
+        )
         .eq('id', userId)
         .maybeSingle();
     final status = row?['worker_status'] as String?;
@@ -90,6 +94,12 @@ class _WorkerScreenState extends State<WorkerScreen> {
     final completedFlag = (row?['worker_profile_completed'] as bool?) ?? false;
     final services = List<String>.from((row?['service_types'] as List?) ?? const []);
     final totalEarnings = (row?['total_earnings'] as num?)?.toDouble() ?? 0;
+    final workerVerified = (row?['worker_verified'] as bool?) ?? false;
+    final workerDisabled = (row?['worker_disabled'] as bool?) ?? false;
+    final consentSatisfied = (row?['worker_background_check_consent_at'] as String?) != null &&
+        (row?['worker_background_check_consent_platform'] as String?) != null &&
+        (row?['worker_background_check_consent_version'] as String?) ==
+            helperBackgroundCheckConsentVersion;
     final backgroundRow = await Supabase.instance.client
         .from('worker_background_checks')
         .select(
@@ -106,6 +116,7 @@ class _WorkerScreenState extends State<WorkerScreen> {
         exp != null &&
         exp >= 0 &&
         services.isNotEmpty &&
+        consentSatisfied &&
         backgroundComplete;
     if (!complete && mounted) {
       final result = await Navigator.of(context).push<bool>(
@@ -199,8 +210,8 @@ class _WorkerScreenState extends State<WorkerScreen> {
 
       setState(() {
         _workerStatus = (profile?['worker_status'] as String?) ?? 'offline';
-        _workerVerified = (profile?['worker_verified'] as bool?) ?? false;
-        _workerDisabled = (profile?['worker_disabled'] as bool?) ?? false;
+        _workerVerified = workerVerified;
+        _workerDisabled = workerDisabled;
         _totalEarnings = totalEarnings;
         _workerServiceTypes = serviceTypes;
         _pendingJobs = (pendingRows as List)
@@ -549,6 +560,7 @@ class _WorkerScreenState extends State<WorkerScreen> {
         .map((type) => serviceVisualFor(type).label)
         .join(', ');
     final matchingJobs = _workerCanAcceptJobs ? _pendingJobs : const <Job>[];
+    final accessReady = _workerVerified && !_workerDisabled;
 
     return Scaffold(
       appBar: AppBar(
@@ -622,8 +634,8 @@ class _WorkerScreenState extends State<WorkerScreen> {
                       padding: const EdgeInsets.all(16),
                       child: Text(
                         _workerDisabled
-                            ? 'Staff has paused new job intake for this worker account. Existing jobs remain visible here.'
-                            : 'Your worker profile is complete. Staff approval is still required before new jobs unlock.',
+                            ? 'Staff has paused this helper account. Review your earnings and history here, and contact support if you need to restore access.'
+                            : 'Your helper profile is complete and waiting for staff approval before new jobs unlock.',
                       ),
                     ),
                   ),
@@ -734,171 +746,173 @@ class _WorkerScreenState extends State<WorkerScreen> {
                   const SizedBox(height: 12),
                   Text(_error!, style: const TextStyle(color: Color(0xFF8A1C0F))),
                 ],
-                const SizedBox(height: 16),
-                Text('Active jobs', style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 8),
-                if (_acceptedJobs.isEmpty)
-                  const Card(
-                    child: Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Text('No active jobs yet.'),
-                    ),
-                  )
-                else
-                  ..._acceptedJobs.map((job) {
-                    final visual = serviceVisualFor(job.serviceType);
-                    return Card(
+                if (accessReady) ...[
+                  const SizedBox(height: 16),
+                  Text('Active jobs', style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 8),
+                  if (_acceptedJobs.isEmpty)
+                    const Card(
                       child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                ServiceAvatar(serviceType: job.serviceType, size: 40),
-                                const SizedBox(width: 10),
-                                Expanded(child: Text(visual.label)),
-                                Chip(
-                                  label: Text(job.status.replaceAll('_', ' ')),
-                                  backgroundColor: _statusColor(job.status),
-                                  labelStyle: const TextStyle(color: Colors.white),
+                        padding: EdgeInsets.all(16),
+                        child: Text('No active jobs yet.'),
+                      ),
+                    )
+                  else
+                    ..._acceptedJobs.map((job) {
+                      final visual = serviceVisualFor(job.serviceType);
+                      return Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  ServiceAvatar(serviceType: job.serviceType, size: 40),
+                                  const SizedBox(width: 10),
+                                  Expanded(child: Text(visual.label)),
+                                  Chip(
+                                    label: Text(job.status.replaceAll('_', ' ')),
+                                    backgroundColor: _statusColor(job.status),
+                                    labelStyle: const TextStyle(color: Colors.white),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(job.description),
+                              if (job.locationName != null) ...[
+                                const SizedBox(height: 6),
+                                Text('Location: ${job.locationName}'),
+                              ],
+                              const SizedBox(height: 12),
+                              if (job.status == 'accepted') ...[
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: FilledButton(
+                                        onPressed: _startingJobId == job.id
+                                            ? null
+                                            : () => _startJob(job.id),
+                                        child: Text(
+                                          _startingJobId == job.id
+                                              ? 'Updating...'
+                                              : 'Mark Arrived',
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: OutlinedButton(
+                                        onPressed: _cancellingJobId == job.id
+                                            ? null
+                                            : () => _cancelWorkerJob(job.id),
+                                        child: Text(
+                                          _cancellingJobId == job.id
+                                              ? 'Cancelling...'
+                                              : 'Cancel',
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ] else ...[
+                                TextFormField(
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  initialValue: _finalPriceInputs[job.id] ??
+                                      (job.finalPrice ?? job.estimatedPrice ?? 0).toStringAsFixed(2),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Final price for customer',
+                                    prefixText: '\$',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _finalPriceInputs[job.id] = value;
+                                    });
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: FilledButton(
+                                        onPressed: _completingJobId == job.id
+                                            ? null
+                                            : () => _completeJob(job.id),
+                                        child: Text(
+                                          _completingJobId == job.id
+                                              ? 'Completing...'
+                                              : 'Mark Complete',
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: OutlinedButton(
+                                        onPressed: _cancellingJobId == job.id
+                                            ? null
+                                            : () => _cancelWorkerJob(job.id),
+                                        child: Text(
+                                          _cancellingJobId == job.id
+                                              ? 'Cancelling...'
+                                              : 'Cancel',
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(job.description),
-                            if (job.locationName != null) ...[
-                              const SizedBox(height: 6),
-                              Text('Location: ${job.locationName}'),
                             ],
-                            const SizedBox(height: 12),
-                            if (job.status == 'accepted') ...[
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: FilledButton(
-                                      onPressed: _startingJobId == job.id
-                                          ? null
-                                          : () => _startJob(job.id),
-                                      child: Text(
-                                        _startingJobId == job.id
-                                            ? 'Updating...'
-                                            : 'Mark Arrived',
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: OutlinedButton(
-                                      onPressed: _cancellingJobId == job.id
-                                          ? null
-                                          : () => _cancelWorkerJob(job.id),
-                                      child: Text(
-                                        _cancellingJobId == job.id
-                                            ? 'Cancelling...'
-                                            : 'Cancel',
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ] else ...[
-                              TextFormField(
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                initialValue: _finalPriceInputs[job.id] ??
-                                    (job.finalPrice ?? job.estimatedPrice ?? 0).toStringAsFixed(2),
-                                decoration: const InputDecoration(
-                                  labelText: 'Final price for customer',
-                                  prefixText: '\$',
-                                  border: OutlineInputBorder(),
-                                ),
-                                onChanged: (value) {
-                                  setState(() {
-                                    _finalPriceInputs[job.id] = value;
-                                  });
-                                },
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: FilledButton(
-                                      onPressed: _completingJobId == job.id
-                                          ? null
-                                          : () => _completeJob(job.id),
-                                      child: Text(
-                                        _completingJobId == job.id
-                                            ? 'Completing...'
-                                            : 'Mark Complete',
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: OutlinedButton(
-                                      onPressed: _cancellingJobId == job.id
-                                          ? null
-                                          : () => _cancelWorkerJob(job.id),
-                                      child: Text(
-                                        _cancellingJobId == job.id
-                                            ? 'Cancelling...'
-                                            : 'Cancel',
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
-                const SizedBox(height: 16),
-                Text('Matching jobs', style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 8),
-                if (matchingJobs.isEmpty)
-                  const Card(
-                    child: Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Text('No matching jobs right now.'),
-                    ),
-                  )
-                else
-                  ...matchingJobs.map((job) {
-                    final visual = serviceVisualFor(job.serviceType);
-                    return Card(
-                      child: ListTile(
-                        leading: ServiceAvatar(serviceType: job.serviceType),
-                        title: Text(visual.label),
-                        subtitle: Text(
-                          [
-                            job.description,
-                            if (job.estimatedPrice != null)
-                              'Estimate: \$${job.estimatedPrice!.toStringAsFixed(2)}',
-                            if (job.locationName != null) job.locationName!,
-                          ].join('\n'),
-                        ),
-                        trailing: FilledButton.tonal(
-                          onPressed: _acceptingJobId == job.id ||
-                                  _workerStatus != 'online' ||
-                                  !_workerCanAcceptJobs
-                              ? null
-                              : () => _acceptJob(job.id),
-                          child: Text(
-                            _acceptingJobId == job.id
-                                ? 'Please wait...'
-                                : !_workerCanAcceptJobs
-                                    ? 'Review Pending'
-                                    : _workerStatus != 'online'
-                                    ? 'Go online'
-                                    : 'Accept',
                           ),
                         ),
+                      );
+                    }),
+                  const SizedBox(height: 16),
+                  Text('Matching jobs', style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 8),
+                  if (matchingJobs.isEmpty)
+                    const Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text('No matching jobs right now.'),
                       ),
-                    );
-                  }),
+                    )
+                  else
+                    ...matchingJobs.map((job) {
+                      final visual = serviceVisualFor(job.serviceType);
+                      return Card(
+                        child: ListTile(
+                          leading: ServiceAvatar(serviceType: job.serviceType),
+                          title: Text(visual.label),
+                          subtitle: Text(
+                            [
+                              job.description,
+                              if (job.estimatedPrice != null)
+                                'Estimate: \$${job.estimatedPrice!.toStringAsFixed(2)}',
+                              if (job.locationName != null) job.locationName!,
+                            ].join('\n'),
+                          ),
+                          trailing: FilledButton.tonal(
+                            onPressed: _acceptingJobId == job.id ||
+                                    _workerStatus != 'online' ||
+                                    !_workerCanAcceptJobs
+                                ? null
+                                : () => _acceptJob(job.id),
+                            child: Text(
+                              _acceptingJobId == job.id
+                                  ? 'Please wait...'
+                                  : !_workerCanAcceptJobs
+                                      ? 'Review Pending'
+                                      : _workerStatus != 'online'
+                                      ? 'Go online'
+                                      : 'Accept',
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                ],
               ],
             ),
     );

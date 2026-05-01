@@ -32,6 +32,8 @@ function getWorkspacePath(role: string | null | undefined, isWorker: boolean) {
   return "/dashboard";
 }
 
+const HELPER_BACKGROUND_CHECK_CONSENT_VERSION = "helper_background_check_v1";
+
 export async function updateSession(request: NextRequest) {
   const { supabaseUrl, supabaseKey } = getSupabaseConfig();
   const pathname = request.nextUrl.pathname;
@@ -77,12 +79,23 @@ export async function updateSession(request: NextRequest) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name, role, is_worker")
+    .select(
+      "full_name, role, is_worker, worker_verified, worker_disabled, worker_background_check_consent_at, worker_background_check_consent_platform, worker_background_check_consent_version",
+    )
     .eq("id", user.id)
     .maybeSingle();
 
   const fullName = (profile?.full_name ?? "").trim();
-  const hasProfile = fullName.length > 0;
+  const isWorker = Boolean(profile?.is_worker);
+  const workerApproved = !isWorker || (Boolean(profile?.worker_verified) && !Boolean(profile?.worker_disabled));
+  const hasWorkerConsent =
+    !isWorker ||
+    Boolean(
+      profile?.worker_background_check_consent_at &&
+        profile?.worker_background_check_consent_platform &&
+        profile?.worker_background_check_consent_version === HELPER_BACKGROUND_CHECK_CONSENT_VERSION,
+    );
+  const hasProfile = fullName.length > 0 && hasWorkerConsent && workerApproved;
   const workspacePath = getWorkspacePath(profile?.role, Boolean(profile?.is_worker));
 
   if (!hasProfile && pathname !== "/profile") {

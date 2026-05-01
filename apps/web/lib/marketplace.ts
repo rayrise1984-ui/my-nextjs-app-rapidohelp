@@ -58,6 +58,9 @@ export interface WorkerProfile {
   worker_status: WorkerStatus;
   worker_verified?: boolean | null;
   worker_disabled?: boolean | null;
+  worker_background_check_consent_at?: string | null;
+  worker_background_check_consent_platform?: string | null;
+  worker_background_check_consent_version?: string | null;
   service_types: ServiceType[];
   worker_work_details?: string | null;
   worker_experience_years?: number | null;

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+const helperBackgroundCheckConsentVersion = 'helper_background_check_v1';
+
 class ProfileSetupScreen extends StatefulWidget {
   final String userId;
   final VoidCallback? onCompleted;
@@ -21,6 +23,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final _avatarUrlController = TextEditingController();
   bool _loading = true;
   bool _submitting = false;
+  bool _isWorker = false;
+  bool _needsWorkerConsent = false;
+  bool _workerBackgroundCheckConsent = false;
   String? _error;
 
   @override
@@ -40,14 +45,25 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     try {
       final row = await Supabase.instance.client
           .from('profiles')
-          .select('full_name, avatar_url')
+          .select(
+            'full_name, avatar_url, is_worker, worker_background_check_consent_at, worker_background_check_consent_platform, worker_background_check_consent_version',
+          )
           .eq('id', widget.userId)
           .maybeSingle();
 
       if (!mounted) return;
+      final isWorker = (row?['is_worker'] as bool?) ?? false;
+      final consentSatisfied = !isWorker ||
+          ((row?['worker_background_check_consent_at'] as String?) != null &&
+              (row?['worker_background_check_consent_platform'] as String?) != null &&
+              (row?['worker_background_check_consent_version'] as String?) ==
+                  helperBackgroundCheckConsentVersion);
       setState(() {
         _fullNameController.text = (row?['full_name'] as String?) ?? '';
         _avatarUrlController.text = (row?['avatar_url'] as String?) ?? '';
+        _isWorker = isWorker;
+        _needsWorkerConsent = isWorker && !consentSatisfied;
+        _workerBackgroundCheckConsent = consentSatisfied;
         _loading = false;
       });
     } catch (error) {
@@ -61,6 +77,12 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_needsWorkerConsent && !_workerBackgroundCheckConsent) {
+      setState(() {
+        _error = 'Helpers must consent to a background check before continuing.';
+      });
+      return;
+    }
 
     setState(() {
       _submitting = true;
@@ -68,6 +90,22 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     });
 
     try {
+      final client = Supabase.instance.client;
+
+      if (_needsWorkerConsent) {
+        final consentResponse = await client.rpc(
+          'accept_worker_background_check_consent',
+          params: {
+            'p_platform': 'mobile',
+            'p_consent_version': helperBackgroundCheckConsentVersion,
+          },
+        );
+
+        if (consentResponse == null) {
+          throw Exception('Could not save background check consent.');
+        }
+      }
+
       final updatedProfile = await Supabase.instance.client
           .from('profiles')
           .update({
@@ -160,6 +198,22 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                       hintText: 'Optional profile image link',
                     ),
                   ),
+                  if (_isWorker && _needsWorkerConsent) ...[
+                    const SizedBox(height: 16),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      value: _workerBackgroundCheckConsent,
+                      onChanged: _submitting
+                          ? null
+                          : (value) {
+                              setState(() => _workerBackgroundCheckConsent = value ?? false);
+                            },
+                      title: const Text(
+                        'I consent to a background check so RapidoHelp can review my helper profile for approval.',
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   SizedBox(
                     width: double.infinity,
