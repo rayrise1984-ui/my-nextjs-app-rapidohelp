@@ -7,6 +7,7 @@ import {
   bookableServiceTypes,
   type ServiceType,
 } from "@/lib/marketplace";
+import { getSiteUrl } from "@/lib/site-url";
 import {
   getServiceCatalogEntry,
   serviceGroupFaqs,
@@ -32,16 +33,27 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { serviceType } = await params;
   const entry = getServiceCatalogEntry(serviceType as ServiceType);
+  const siteUrl = getSiteUrl();
 
   if (!entry || !bookableServiceTypes.includes(serviceType as ServiceType)) {
     return {
-      title: "Service not found | RapidoHelp",
+      title: "Service not found",
     };
   }
 
   return {
-    title: `${entry.title} | RapidoHelp`,
+    title: entry.title,
     description: entry.summary,
+    alternates: {
+      canonical: `/services/${serviceType}`,
+    },
+    openGraph: {
+      title: entry.title,
+      description: entry.summary,
+      url: `${siteUrl}/services/${serviceType}`,
+      siteName: "RapidoHelp",
+      type: "website",
+    },
   };
 }
 
