@@ -198,7 +198,7 @@ const downloadWorkerWaybill = (job: Job, workerName: string) => {
     <p><strong>Description:</strong> ${escapeHtml(job.description)}</p>
     <p><strong>Location:</strong> ${escapeHtml(job.location_name ?? "Location pending")}</p>
     <p><strong>Completed:</strong> ${escapeHtml(completedAt.toLocaleString())}</p>
-    <p><strong>Worker:</strong> ${escapeHtml(workerName)}</p>
+    <p><strong>Service partner:</strong> ${escapeHtml(workerName)}</p>
     <p><strong>Job ID:</strong> ${escapeHtml(job.id)}</p>
   </section>
   <section>
@@ -318,7 +318,7 @@ export function WorkerPanel() {
 
     if (!client) {
       setLoading(false);
-      setError("Live helper services are not available yet. Please try again shortly.");
+      setError("Live service partner services are not available yet. Please try again shortly.");
       return;
     }
 
@@ -786,7 +786,7 @@ export function WorkerPanel() {
     }
 
     if (workerNeedsConsent && !workerConsentChecked) {
-      setError("Helpers must consent to a background check before saving the profile.");
+      setError("Service partners must consent to a background check before saving the profile.");
       return;
     }
 
@@ -864,8 +864,8 @@ export function WorkerPanel() {
       }
       setMessage(
         workerVerified && !workerDisabled
-          ? "Worker profile saved."
-          : "Worker profile, background check, and payout account details saved. Staff review is required before you can go online.",
+          ? "Service partner profile saved."
+          : "Service partner profile, background check, and payout account details saved. Staff review is required before you can go online.",
       );
       setShowProfileEditor(false);
     } catch (err) {
@@ -877,7 +877,7 @@ export function WorkerPanel() {
 
   const renderProfileForm = (options?: { compactHeader?: boolean }) => (
     <div style={{ maxWidth: "640px", margin: options?.compactHeader ? "0" : "0 auto", display: "flex", flexDirection: "column", gap: "12px" }}>
-      {!options?.compactHeader && <h2 style={{ marginBottom: "4px" }}>Complete Worker Profile</h2>}
+      {!options?.compactHeader && <h2 style={{ marginBottom: "4px" }}>Complete Service Partner Profile</h2>}
       {!options?.compactHeader && (
         <p style={{ marginTop: 0, color: "#555" }}>
           Share your services, experience, background check details, and payout account information before accepting jobs.
@@ -902,7 +902,7 @@ export function WorkerPanel() {
             style={{ marginTop: "4px" }}
           />
           <span style={{ lineHeight: 1.5 }}>
-            I consent to a background check so RapidoHelp can review my helper profile for approval.
+            I consent to a background check so RapidoHelp can review my service partner profile for approval.
           </span>
         </label>
       ) : workerConsentOnFile ? (
@@ -936,7 +936,7 @@ export function WorkerPanel() {
         </select>
         {!workerCanAcceptNewJobs && (
           <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#666" }}>
-            Workers can go online after staff approval.
+            Service partners can go online after staff approval.
           </p>
         )}
       </label>
@@ -1262,7 +1262,7 @@ export function WorkerPanel() {
             opacity: savingProfile ? 0.7 : 1,
           }}
         >
-          {savingProfile ? "Saving..." : "Save Worker Profile"}
+          {savingProfile ? "Saving..." : "Save Service Partner Profile"}
         </button>
         {options?.compactHeader && (
           <button
@@ -1376,7 +1376,7 @@ export function WorkerPanel() {
           {backgroundCheck?.ssn_last4 ? ` · SSN last 4 ending ${backgroundCheck.ssn_last4}` : ""}
         </p>
         <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#666" }}>
-          Consent: {workerConsentOnFile ? "on file" : "pending helper consent"}
+          Consent: {workerConsentOnFile ? "on file" : "pending service partner consent"}
           {workerProfile?.worker_background_check_consent_platform
             ? ` · ${workerProfile.worker_background_check_consent_platform}`
             : ""}
@@ -1406,13 +1406,13 @@ export function WorkerPanel() {
 
       {!workerVerified && !workerDisabled && (
         <div style={{ marginBottom: "16px", padding: "14px 16px", backgroundColor: "#FFF5E8", border: "1px solid #F0C78A", borderRadius: "8px", color: "#8A5A00" }}>
-          Your worker profile is complete and waiting for staff approval. You can keep editing your details, but job intake stays offline until review is done.
+          Your service partner profile is complete and waiting for staff approval. You can keep editing your details, but job intake stays offline until review is done.
         </div>
       )}
 
       {workerDisabled && (
         <div style={{ marginBottom: "16px", padding: "14px 16px", backgroundColor: "#FFF1EF", border: "1px solid #E2A39A", borderRadius: "8px", color: "#8A1C0F" }}>
-          Your worker access is currently paused by staff. Review your history here and contact support if you need to restore access.
+          Your service partner access is currently paused by staff. Review your history here and contact support if you need to restore access.
         </div>
       )}
 
@@ -1427,13 +1427,13 @@ export function WorkerPanel() {
             color: "#8A5A00",
           }}
         >
-          Your helper profile is complete and waiting for staff approval. You can review earnings and work history while we finish the background review.
+          Your service partner profile is complete and waiting for staff approval. You can review earnings and work history while we finish the background review.
         </div>
       )}
 
       {showProfileEditor && (
         <div style={{ marginBottom: "24px", padding: "16px", backgroundColor: "#fff", border: "1px solid #ddd", borderRadius: "8px" }}>
-          <h3 style={{ margin: "0 0 10px 0" }}>Edit Worker Profile</h3>
+          <h3 style={{ margin: "0 0 10px 0" }}>Edit Service Partner Profile</h3>
           {renderProfileForm({ compactHeader: true })}
         </div>
       )}

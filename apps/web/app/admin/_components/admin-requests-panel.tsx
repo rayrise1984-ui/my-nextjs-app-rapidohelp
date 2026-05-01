@@ -442,7 +442,7 @@ export function AdminRequestsPanel() {
         worker_disabled: updated.worker_disabled ?? false,
       },
     }));
-    setMessage("Worker access updated.");
+      setMessage("Service partner access updated.");
   };
 
   if (loading) return <div className="dashboard-loading">Loading admin workspace...</div>;
@@ -453,11 +453,11 @@ export function AdminRequestsPanel() {
     <section className="dashboard-grid">
       <div className="dashboard-stack">
         <article className="dashboard-card">
-          <h2>Worker review queue</h2>
+          <h2>Service partner review queue</h2>
           <p className="dashboard-note">Approve completed worker profiles, pause service access, and track who is live.</p>
 
           {workers.length === 0 ? (
-            <div className="empty-state">No worker profiles found yet.</div>
+            <div className="empty-state">No service partner profiles found yet.</div>
           ) : (
             <div className="request-list">
               {workers.map((worker) => {
@@ -475,8 +475,8 @@ export function AdminRequestsPanel() {
                   <div className="request-item" key={worker.id}>
                     <header>
                       <div>
-                        <h3>{worker.full_name?.trim() ? worker.full_name.trim() : "Worker account"}</h3>
-                        <p className="request-caption">Worker ID: {worker.id}</p>
+                        <h3>{worker.full_name?.trim() ? worker.full_name.trim() : "Service partner account"}</h3>
+                        <p className="request-caption">Service partner ID: {worker.id}</p>
                         <p className="request-caption">Role: {worker.role ?? "customer"}</p>
                       </div>
                       <span className="pill" style={{ backgroundColor: workerReviewColor(worker), color: "white" }}>
@@ -575,7 +575,7 @@ export function AdminRequestsPanel() {
                         onClick={() => void saveWorkerAccess(worker.id)}
                         type="button"
                       >
-                        {savingWorkerId === worker.id ? "Saving..." : "Save worker access"}
+                        {savingWorkerId === worker.id ? "Saving..." : "Save partner access"}
                       </button>
                     </div>
                   </div>
@@ -599,7 +599,7 @@ export function AdminRequestsPanel() {
                     <div>
                       <h3>{serviceTypeLabels[job.service_type]}</h3>
                       <p className="request-caption">Customer: {job.user_id}</p>
-                      {job.worker_id ? <p className="request-caption">Worker: {job.worker_id}</p> : null}
+                      {job.worker_id ? <p className="request-caption">Service partner: {job.worker_id}</p> : null}
                     </div>
                     <span className="pill" style={{ backgroundColor: statusColor(job.status), color: "white" }}>
                       {jobStatusLabels[job.status]}
@@ -655,13 +655,13 @@ export function AdminRequestsPanel() {
             <span className="pill muted">{metrics.open} open jobs</span>
             <span className="pill muted">{metrics.active} active jobs</span>
             <span className="pill muted">{metrics.completed} completed jobs</span>
-            <span className="pill muted">{metrics.onlineWorkers} workers online</span>
+            <span className="pill muted">{metrics.onlineWorkers} service partners online</span>
           </div>
           <div className="request-meta">
             <span className="pill muted">{metrics.pendingWorkerConsent} waiting on consent</span>
             <span className="pill muted">{metrics.pendingWorkerReviews} pending reviews</span>
-            <span className="pill muted">{metrics.approvedWorkers} approved workers</span>
-            <span className="pill muted">{metrics.pausedWorkers} paused workers</span>
+            <span className="pill muted">{metrics.approvedWorkers} approved service partners</span>
+            <span className="pill muted">{metrics.pausedWorkers} paused service partners</span>
           </div>
           <p className="dashboard-note">Gross completed value: ${metrics.gross.toFixed(2)}</p>
         </article>

@@ -190,7 +190,7 @@ export function AuthPanel() {
     }
 
     if (accountType === "helper" && !helperBackgroundCheckConsent) {
-      setError("Helpers must consent to a background check before creating a profile.");
+      setError("Service partners must consent to a background check before creating a profile.");
       setMessage(null);
       return;
     }
@@ -234,7 +234,7 @@ export function AuthPanel() {
 
     setMessage(
       accountType === "helper"
-        ? "Helper profile created. Check your email or sign in to finish setup."
+        ? "Service partner profile created. Check your email or sign in to finish setup."
         : "Profile created. Check your email or sign in to continue.",
     );
   };
@@ -284,7 +284,7 @@ export function AuthPanel() {
       <h1>{entryMode === "create" ? "Create your profile." : "Sign in to RapidoHelp."}</h1>
       <p className="lead">
         {entryMode === "create"
-          ? "Customer and helper accounts start by creating a profile, then moving into the app."
+          ? "Customer and service partner accounts start by creating a profile, then moving into the app."
           : "Use email, password, magic link, or SMS to book help, accept jobs, or manage operations."}
       </p>
 
@@ -334,7 +334,7 @@ export function AuthPanel() {
                     }}
                     type="button"
                   >
-                    Helper
+                    Service Partner
                   </button>
                 </div>
               </fieldset>
@@ -346,7 +346,7 @@ export function AuthPanel() {
                     type="checkbox"
                   />
                   <span>
-                    I consent to a background check so RapidoHelp can review my helper profile for approval.
+                    I consent to a background check so RapidoHelp can review my service partner profile for approval.
                   </span>
                 </label>
               ) : null}
@@ -453,7 +453,7 @@ export function AuthPanel() {
       {error ? <p className="auth-error">{error}</p> : null}
 
       <p className="auth-note">
-        Customer, helper, and staff access all start here. Create a profile first if you are new.
+        Customer, service partner, and admin access all start here. Create a profile first if you are new.
       </p>
     </section>
   );

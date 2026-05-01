@@ -1,23 +1,24 @@
-# RapidoHelp – On-Demand Roadside Assistance Marketplace
+# RapidoHelp – Customer, Service Partner, and Admin Marketplace
 
 **Instant help in minutes — anytime, anywhere**
 
-This monorepo contains a full-stack MVP for a gig economy marketplace connecting users needing roadside assistance with verified local helpers.
+This monorepo contains a full-stack MVP for a marketplace connecting customers, service partners, and admins in one product flow.
 
 ## Platform Overview
 
-- **Users** post roadside assistance jobs (flat tire, jump start, fuel delivery, towing)
-- **Workers** view nearby job offers, accept them, and earn money
-- **Real-time matching** connects users with helpers in 5–15 minutes
+- **Customers** post roadside assistance and local help jobs
+- **Service partners** view nearby job offers, accept them, and earn money
+- **Admins** review partners, manage access, and monitor operations
+- **Real-time matching** connects customers with nearby service partners
 - **Transparent pricing** with commission-based revenue model
-- **Ratings system** enables trust between users and workers
+- **Ratings system** enables trust between customers and service partners
 
 ## Repository Layout
 
 ```text
 apps/
-  mobile/     Flutter app for iOS/Android (users and workers)
-  web/        Next.js app for job booking and worker management
+  mobile/     Flutter app for iOS/Android (customers and service partners)
+  web/        Next.js app for booking, partner operations, and admin review
 supabase/     Backend: auth, data, realtime, and RLS policies
 docs/         Architecture and deployment guides
 ```
@@ -54,11 +55,11 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 ```
 
 **Access:**
-- `/` – Home with service cards and sign-in
-- `/auth` – Magic link OTP sign-in
-- `/dashboard` – User job booking and history
-- `/worker` – Worker job feed (next step)
-- `/admin` – Job management and worker verification (next step)
+- `/` – Home with customer and service partner entry points
+- `/auth` – Profile creation and sign-in
+- `/dashboard` – Customer booking and history
+- `/worker` – Service partner job feed and earnings
+- `/admin` – Admin review and verification workspace
 
 ### 2. Mobile (Flutter)
 
@@ -73,7 +74,7 @@ flutter run \
 
 **App flow:**
 - Sign in with email OTP
-- Auto-navigate to request list (users) or job feed (workers)
+- Auto-navigate to request list (customers) or job feed (service partners)
 - Post jobs or accept job offers
 - Real-time updates
 
@@ -106,68 +107,69 @@ supabase start
 
 ## Current Features (MVP)
 
-**User Authentication**
+**Customer Authentication**
 - Supabase email magic-link OTP across web and mobile
 - Session persistence with row-level security
 
-**User Job Posting**
-- Select service type (flat tire, jump start, fuel, towing)
-- Describe situation
-- Test mode: choose mock location (real GPS in production)
-- Real-time job list with status badges
+**Customer Booking**
+- Select service type and describe the request
+- Add location details and schedule the visit
+- Review pricing, payment, and status updates in real time
 
 **Marketplace Schema**
+- `profiles` – customer, service partner, and admin accounts
 - `jobs` – user-posted help requests
-- `worker_profiles` – verify and manage workers (RLS: worker-only access)
-- `job_assignments` – track worker offers and acceptance
+- `job_assignments` – track service partner offers and acceptance
+- `worker_background_checks` – partner verification and payout details
 - `worker_ratings` – customers rate completed jobs
 - Realtime subscriptions on all tables
 
-**Mobile Job Booking**
+**Mobile Booking and Partner Ops**
 - Flutter request list matching exact web UX
-- Post jobs, track active jobs, view history
+- Customers post jobs, track active jobs, and view history
+- Service partners review work, earnings, and approval state
 - Realtime status updates
 
 **Automated Test Coverage**
-- Web marketplace/support helper tests via Node's built-in test runner
+- Web marketplace/customer-service-partner tests via Node's built-in test runner
 - Supabase migration/config contract tests for auth SMTP, RLS, RPC grants, and marketplace actions
 - Flutter widget/model test cases for auth shell, service visuals, jobs, ratings, and payout helpers
 
 ## Planned Features (Next Steps)
 
-1. **Worker Job Feed** – `/worker` route for authenticated workers
+1. **Service Partner Job Feed** – `/worker` route for authenticated service partners
    - Browse nearby pending jobs (test: by mock location zones)
    - Accept/decline job offers
    - Navigate to job location with mock map
 
 2. **Job Completion & Ratings**
-   - Worker marks job complete
-   - User rates worker 1–5 stars + optional comment
-   - Worker ratings averaged and displayed
+   - Service partner marks job complete
+   - Customer rates service partner 1–5 stars + optional comment
+   - Service partner ratings averaged and displayed
 
-3. **Worker Earnings Dashboard**
+3. **Service Partner Earnings Dashboard**
    - Track total earnings
    - Commission breakdown (platform takes X%)
    - Payout history
 
 4. **Admin Panel** (`/admin`)
-   - View all jobs and workers
-   - Verify/deactivate workers
+   - View all jobs and service partners
+   - Verify/deactivate service partners
    - Handle disputes
    - Analytics (jobs/day, revenue, etc.)
 
 5. **Real GPS & Matching**
    - Replace mock locations with real user location via phone GPS
-   - Improve matching to find nearest available workers
+   - Improve matching to find nearest available service partners
 
 6. **Push Notifications**
-   - Notify workers of nearby job offers
-   - Notify users when worker accepts
-   - Notify worker when job completed/rated
+   - Notify service partners of nearby job offers
+   - Notify customers when a service partner accepts
+   - Notify service partner when job completed/rated
 
 7. **Payments & Payouts**
    - Stripe integration for user payment
-   - Worker payout processing
+   - Service partner payout processing
 
 ## Domain Model
 
@@ -178,8 +180,8 @@ supabase start
 | `auth.users` | Supabase auth (email, session) |
 | `profiles` | User profile, role, avatar |
 | `jobs` (new) | Posted help requests with location & status |
-| `job_assignments` (new) | Worker offers made, accepted, completed |
-| `worker_ratings` (new) | User ratings of workers after job completion |
+| `job_assignments` (new) | Service partner offers made, accepted, completed |
+| `worker_ratings` (new) | Customer ratings of service partners after job completion |
 
 ### Enum Types
 
@@ -190,8 +192,8 @@ supabase start
 ### Row Level Security (RLS)
 
 - Users see only their own jobs
-- Workers see job offers extended to them
-- Workers see only their own ratings and earnings
+- Service partners see job offers extended to them
+- Service partners see only their own ratings and earnings
 - Admin sees all (role-based, next step)
 
 ## Configuration for Production
@@ -240,9 +242,9 @@ See `docs/deployment.md` for detailed setup steps.
 
 ## Team Roles
 
-**User**: Posts jobs, pays for help, rates workers
-**Worker**: Accepts jobs, completes work, earns money
-**Admin**: Verifies workers, manages disputes, views analytics
+**Customer**: Posts jobs, pays for help, rates service partners
+**Service Partner**: Accepts jobs, completes work, earns money
+**Admin**: Verifies service partners, manages disputes, views analytics
 **Developer**: Extends marketplace features, optimizes matching
 
 ## Recommended Startup Sequence
@@ -250,19 +252,19 @@ See `docs/deployment.md` for detailed setup steps.
 1. **Foundation** (completed)
    - Monorepo, auth, schema, home page
 
-2. **Next: Worker Features** (in progress)
+2. **Next: Service Partner Features** (in progress)
    - Create `/worker` route with job feed
-   - Allow workers to accept/decline jobs
+   - Allow service partners to accept/decline jobs
    - Build job detail screen with navigation to location
 
 3. **Then: Completion & Ratings**
-   - Worker marks job complete
+   - Service partner marks job complete
    - User rates and comments
    - Compute worker rating averages
 
 4. **Then: Admin Panel**
    - Create `/admin` dashboard
-   - Worker verification flows
+   - Service partner verification flows
    - Basic analytics
 
 5. **Then: Real Location Matching**
@@ -273,7 +275,7 @@ See `docs/deployment.md` for detailed setup steps.
 6. **Then: Payments**
    - Stripe integration
    - User payment processing
-   - Worker payouts
+   - Service partner payouts
 
 ## Code Organization
 
@@ -281,7 +283,7 @@ See `docs/deployment.md` for detailed setup steps.
 - `app/page.tsx` – Home with service overview
 - `app/auth/page.tsx` – Sign-in page
 - `app/dashboard/` – User job posting and history
-- `app/worker/` – Worker job feed (next)
+- `app/worker/` – Service partner job feed (next)
 - `app/admin/` – Admin console (next)
 - `lib/marketplace.ts` – Types and state helpers
 - `lib/supabase.ts` – Client initialization
@@ -293,7 +295,7 @@ See `docs/deployment.md` for detailed setup steps.
 - `lib/core/supabase_config.dart` – Config
 
 **Backend**:
-- `supabase/migrations/20260320005000_pivot_to_marketplace.sql` – Full schema for jobs, workers, ratings
+- `supabase/migrations/20260320005000_pivot_to_marketplace.sql` – Full schema for jobs, service partners, ratings
 - RLS policies for marketplace access control
 
 ## Documentation

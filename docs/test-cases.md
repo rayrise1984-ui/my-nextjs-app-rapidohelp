@@ -11,24 +11,24 @@
 - A completed job shows payment actions and can be marked paid through `mark_job_paid`.
 - A completed assigned job can be rated through `rate_worker`.
 
-## Web Worker Flow
+## Web Service Partner Flow
 
-- A helper must consent to a background check before staff review can begin.
-- A worker must complete profile, background check, and payout account details before seeing intake.
-- A worker cannot go online or accept work until staff verification is active.
-- A verified worker can filter available jobs by selected services.
-- A verified online worker can accept only matching pending jobs.
+- A service partner must consent to a background check before staff review can begin.
+- A service partner must complete profile, background check, and payout account details before seeing intake.
+- A service partner cannot go online or accept work until staff verification is active.
+- A verified service partner can filter available jobs by selected services.
+- A verified online service partner can accept only matching pending jobs.
 - Accepted jobs can move to in-progress through `start_job`.
 - Active jobs can be cancelled through `cancel_worker_job`.
 - In-progress jobs can be completed with a positive final price through `complete_job`.
-- Worker profiles show work history with paid earnings and pending payout totals.
-- Completed work can export a worker waybill.
+- Service partner profiles show work history with paid earnings and pending payout totals.
+- Completed work can export a service partner waybill.
 
 ## Web Admin Flow
 
 - Customers visiting `/admin` are redirected back to `/dashboard`.
-- Staff can view all jobs and worker profiles, including helper consent status.
-- Staff can approve or pause worker access through `staff_update_worker_access` after consent is on file.
+- Staff can view all jobs and service partner profiles, including consent status.
+- Staff can approve or pause service partner access through `staff_update_worker_access` after consent is on file.
 - Staff can update job statuses through `staff_update_job_status`.
 - Admin metrics reflect open, active, completed, worker-review, and gross-value counts.
 
@@ -47,7 +47,7 @@
 
 - The app renders the auth shell when Supabase config is missing.
 - Signed-in users must complete their profile before the dashboard or worker view opens.
-- Helpers must consent to a background check before profile completion can finish.
+- Service partners must consent to a background check before profile completion can finish.
 - Auth UI switches between email/password and phone OTP modes.
 - Job JSON maps database fields, defaults missing payment status to `unpaid`, and calculates payout fallbacks.
 - Worker rating JSON maps all rating fields.

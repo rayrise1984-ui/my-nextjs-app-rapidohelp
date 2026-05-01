@@ -13,7 +13,7 @@ export default function DashboardPage() {
             <p className="eyebrow">Roadside Assistance</p>
             <h1>Book help now</h1>
             <p className="lead">
-              Describe your situation and we'll match you with a verified helper nearby.
+              Describe your situation and we'll match you with a verified service partner nearby.
               Real-time tracking, transparent pricing, and ratings-based trust.
             </p>
           </div>

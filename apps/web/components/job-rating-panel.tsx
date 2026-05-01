@@ -65,10 +65,10 @@ export function JobRatingPanel({ job, onRatingSubmitted }: JobRatingPanelProps) 
 
   return (
     <div style={{ padding: "16px", backgroundColor: "#fff3e0", borderRadius: "8px" }}>
-      <h3 style={{ margin: "0 0 12px 0", fontSize: "14px" }}>Rate this helper</h3>
+      <h3 style={{ margin: "0 0 12px 0", fontSize: "14px" }}>Rate this service partner</h3>
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         <div>
-          <p style={{ margin: "0 0 8px 0", fontSize: "12px", fontWeight: 600 }}>How was the help?</p>
+          <p style={{ margin: "0 0 8px 0", fontSize: "12px", fontWeight: 600 }}>How was the service?</p>
           <div style={{ display: "flex", gap: "8px" }}>
             {[1, 2, 3, 4, 5].map((r) => (
               <button

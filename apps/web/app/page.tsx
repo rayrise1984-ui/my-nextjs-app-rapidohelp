@@ -110,7 +110,7 @@ export default function HomePage() {
           <p className="eyebrow">Happy to help, anytime, anywhere, always</p>
           <h1>RapidoHelp</h1>
           <p className="lead">
-            Flat tire, dead battery, fuel delivery, towing, and urgent local tasks handled by nearby helpers.
+            Flat tire, dead battery, fuel delivery, towing, and urgent local tasks handled by nearby service partners.
           </p>
           <div className="status-row">
             <span className={supabaseConfigured ? "status ok" : "status warn"}>
@@ -147,7 +147,7 @@ export default function HomePage() {
           </Link>
           <Link href="/auth">
             <strong>Sign up</strong>
-            <span>Start a customer or helper account before you sign in.</span>
+            <span>Start a customer or service partner account before you sign in.</span>
           </Link>
         </div>
       </section>

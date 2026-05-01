@@ -138,7 +138,7 @@ export function ProfileCompletionGate({ children }: ProfileCompletionGateProps) 
     }
 
     if (isWorker && needsHelperConsent && !helperBackgroundCheckConsent) {
-      setError("Helpers must consent to a background check before continuing.");
+      setError("Service partners must consent to a background check before continuing.");
       return;
     }
 
@@ -236,7 +236,7 @@ export function ProfileCompletionGate({ children }: ProfileCompletionGateProps) 
         </p>
         {needsWorkerApproval ? (
           <p className="dashboard-note">
-            Your helper profile is waiting for staff approval. We will open your workspace once the review is finished.
+            Your service partner profile is waiting for staff approval. We will open your workspace once the review is finished.
           </p>
         ) : null}
 
@@ -272,7 +272,7 @@ export function ProfileCompletionGate({ children }: ProfileCompletionGateProps) 
                 type="checkbox"
               />
               <span>
-                I consent to a background check so RapidoHelp can review my helper profile for approval.
+                I consent to a background check so RapidoHelp can review my service partner profile for approval.
               </span>
             </label>
           ) : null}
